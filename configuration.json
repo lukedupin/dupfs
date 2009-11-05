@@ -1,0 +1,14 @@
+{ "server":
+  {
+    "host": "http://consultantbuddy.com"
+  },
+  "auth": 
+  {
+    "username": "admin",
+    "password": "restless"
+  },
+  "tracking_time":
+  {
+    "round_up": "15"
+  }
+}

@@ -1,0 +1,42 @@
+<!DOCTYPE RCC><RCC version="1.0">
+  <qresource prefix="/">
+    <file>images/black_clock.png</file>
+    <file>images/black_spin_clock_0.png</file>
+    <file>images/black_spin_clock_1.png</file>
+    <file>images/black_spin_clock_2.png</file>
+    <file>images/black_spin_clock_3.png</file>
+    <file>images/black_spin_clock_4.png</file>
+    <file>images/black_spin_clock_5.png</file>
+    <file>images/black_spin_clock_6.png</file>
+    <file>images/black_spin_clock_7.png</file>
+    <file>images/blue_clock.png</file>
+    <file>images/blue_spin_clock_0.png</file>
+    <file>images/blue_spin_clock_1.png</file>
+    <file>images/blue_spin_clock_2.png</file>
+    <file>images/blue_spin_clock_3.png</file>
+    <file>images/blue_spin_clock_4.png</file>
+    <file>images/blue_spin_clock_5.png</file>
+    <file>images/blue_spin_clock_6.png</file>
+    <file>images/blue_spin_clock_7.png</file>
+    <file>images/green_clock.png</file>
+    <file>images/green_spin_clock_0.png</file>
+    <file>images/green_spin_clock_1.png</file>
+    <file>images/green_spin_clock_2.png</file>
+    <file>images/green_spin_clock_3.png</file>
+    <file>images/green_spin_clock_4.png</file>
+    <file>images/green_spin_clock_5.png</file>
+    <file>images/green_spin_clock_6.png</file>
+    <file>images/green_spin_clock_7.png</file>
+    <file>images/on_the_clock.png</file>
+    <file>images/on_the_clock.xcf</file>
+    <file>images/red_clock.png</file>
+    <file>images/red_spin_clock_0.png</file>
+    <file>images/red_spin_clock_1.png</file>
+    <file>images/red_spin_clock_2.png</file>
+    <file>images/red_spin_clock_3.png</file>
+    <file>images/red_spin_clock_4.png</file>
+    <file>images/red_spin_clock_5.png</file>
+    <file>images/red_spin_clock_6.png</file>
+    <file>images/red_spin_clock_7.png</file>
+  </qresource>
+</RCC>
