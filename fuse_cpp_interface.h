@@ -43,6 +43,12 @@ struct xmp_dirp {
   off_t offset;
 };
 
+  //Used to track file actions to limit our message back and forth
+struct xmp_file_handle {
+  uint64_t fh;
+  bool write_action;
+};
+
 	//Create a serial com interface object
 class FuseCppInterface {
   public:
@@ -111,7 +117,7 @@ class FuseCppInterface {
   char* smartPath( const char* path, bool svn_dir = false );
 
     //This method switches the path around for files
-  char* smartFilePath( const char* path );
+  char* smartFilePath( const char* path, bool svn_okay = false );
 
     //This method returns true if we need to open the svn dir as well
   bool requireSvn( const char* path );

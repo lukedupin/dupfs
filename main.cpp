@@ -56,7 +56,7 @@ int main(int argc, char *argv[])
   fuse = new FuseCppInterface( app_argc, app_argv );
 
     //Store my mount point in the tracker
-  tracker->setMounted( QString("%1/dupfs_sync").arg(QString::fromUtf8(app_argv[1])));
+  tracker->setMounted( QString("%1/.dupfs_sync").arg(QString::fromUtf8(app_argv[1])));
 
     //Get my boot class ready
   boot_system = new BootSystem();

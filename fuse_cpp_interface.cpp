@@ -17,7 +17,7 @@
 static FuseCppInterface* Fuse_Interface = NULL;
 static QMutex My_Mutex;
 
-#define DEBUG_LOG
+//#define DEBUG_LOG
 #ifdef DEBUG_LOG
 static void log( const char* msg, const char* path, int result )
 {
@@ -44,7 +44,7 @@ FuseCppInterface::FuseCppInterface( int argc, char** argv )
 
     //Base directories
   Data_Dir = QString::fromUtf8("/tmp/dev");
-  Svn_Dir = QString::fromUtf8("/tmp/work_dir");
+  Svn_Dir = QString::fromUtf8("/usr/local/dupfs_sync/23432048932erwwer89werwr38wr");
 
     //Store the first creation of this object as the true fuse interface
   if ( Fuse_Interface == NULL )
@@ -96,7 +96,8 @@ bool FuseCppInterface::pushAction( NotableAction action, QString str,
     //Store a new action
   memset( buffer, 0, BUFFER_SIZE );
   if ( str2.isEmpty() )
-    sprintf( buffer, "@%d,%s#\n", action, str.toAscii().data() );
+    sprintf( buffer, "@%d,%s#\n", action, 
+                            str.replace(QRegExp(","), "\\,").toAscii().data() );
   else
     sprintf( buffer, "@%d,%s,%s#\n", action, 
                             str.replace(QRegExp(","), "\\,").toAscii().data(), 
@@ -118,14 +119,14 @@ char* FuseCppInterface::smartPath( const char* path, bool svn_dir )
     //Is this svn running?
   if      ( my_path == "/" && svn_dir )
     my_path = Svn_Dir;
-  else if ( my_path.indexOf( QRegExp("^/dupfs_sync") ) >= 0 )
+  else if ( my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 )
   {
     if (svn_dir || my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
         my_path.indexOf( QRegExp("/[.]svn/") ) >= 0 )
       my_path = QString("%1%2").arg( Svn_Dir ).arg( my_path );
     else
       my_path = QString("%1%2").arg( Data_Dir ).arg( 
-                    my_path.replace( QRegExp("^/dupfs_sync"), 
+                    my_path.replace( QRegExp("^/[.]dupfs_sync"), 
                                       QString::fromUtf8("") ) );
   }
   else
@@ -141,18 +142,19 @@ char* FuseCppInterface::smartPath( const char* path, bool svn_dir )
 }
 
   //This method changes paths for files which is slightly different
-char* FuseCppInterface::smartFilePath( const char* path )
+char* FuseCppInterface::smartFilePath( const char* path, bool svn_okay )
 {
   QString my_path = QString::fromUtf8(path);
 
     //Svn base directory
-  if ( my_path.indexOf( QRegExp("^/dupfs_sync") ) >= 0 &&
-      (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
+  if ( my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 &&
+      (svn_okay ||
+       my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
        my_path.indexOf( QRegExp("/[.]svn/") ) >= 0) )
     my_path = QString("%1%2").arg( Svn_Dir ).arg( my_path );
   else
     my_path = QString("%1%2").arg( Data_Dir ).arg( 
-                    my_path.replace( QRegExp("^/dupfs_sync"), 
+                    my_path.replace( QRegExp("^/[.]dupfs_sync"), 
                                       QString::fromUtf8("") ) );
 
     //Copy the path back to my buffer and return the buffer
@@ -170,7 +172,7 @@ bool FuseCppInterface::requireSvn( const char* path )
   QString my_path = QString::fromUtf8(path);
 
     //Is this svn running?
-  if (my_path.indexOf( QRegExp("^/dupfs_sync") ) >= 0 || my_path == "/" )
+  if (my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 || my_path == "/" )
   {
     if (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
         my_path.indexOf( QRegExp("/[.]svn/") ) >= 0 )
@@ -203,7 +205,7 @@ int FuseCppInterface::recursiveMkDir( QString path, mode_t mode )
 bool FuseCppInterface::ignoreAction( QString my_path )
 {
     //Is this svn running?
-  if (my_path.indexOf( QRegExp("^/dupfs_sync") ) >= 0 &&
+  if (my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 &&
       (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
         my_path.indexOf( QRegExp("/[.]svn/") ) >= 0) )
     return true;
@@ -213,18 +215,24 @@ bool FuseCppInterface::ignoreAction( QString my_path )
 }
 
   ///*** Fuse Interace 
+static inline struct xmp_file_handle *get_fhp(struct fuse_file_info *fi)
+{
+  return (struct xmp_file_handle *) (uintptr_t) fi->fh;
+}
+
 static int xmp_getattr(const char *path, struct stat *stbuf)
   { return Fuse_Interface->fuse_getattr( path, stbuf ); }
-int FuseCppInterface::fuse_getattr(const char *path, struct stat *stbuf)
+inline int FuseCppInterface::fuse_getattr(const char *path, struct stat *stbuf)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = lstat(smartFilePath(path), stbuf);
+  if ( (res = lstat(smartFilePath(path), stbuf)) == -1 )
+    res = lstat(smartFilePath(path, true), stbuf);
   log( "getattr", Smart_Path, res );
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   if (res == -1)
     return -errno;
 
@@ -234,19 +242,19 @@ int FuseCppInterface::fuse_getattr(const char *path, struct stat *stbuf)
 static int xmp_fgetattr(const char *path, struct stat *stbuf,
       struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_fgetattr( path, stbuf, fi ); }
-int FuseCppInterface::fuse_fgetattr(const char *path, struct stat *stbuf,
+inline int FuseCppInterface::fuse_fgetattr(const char *path, struct stat *stbuf,
       struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
   (void) path;
 
-  res = fstat(fi->fh, stbuf);
+  res = fstat( get_fhp(fi)->fh, stbuf);
   log( "fstat", Smart_Path, res );
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   if (res == -1)
     return -errno;
 
@@ -255,16 +263,17 @@ int FuseCppInterface::fuse_fgetattr(const char *path, struct stat *stbuf,
 
 static int xmp_access(const char *path, int mask)
   { return Fuse_Interface->fuse_access( path, mask ); }
-int FuseCppInterface::fuse_access(const char *path, int mask)
+inline int FuseCppInterface::fuse_access(const char *path, int mask)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = access( smartFilePath(path), mask);
+  if ( (res = access( smartFilePath(path), mask)) == -1 )
+    res = access( smartFilePath(path, true), mask);
   log( "access", Smart_Path, res );
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   if (res == -1)
     return -errno;
 
@@ -273,16 +282,17 @@ int FuseCppInterface::fuse_access(const char *path, int mask)
 
 static int xmp_readlink(const char *path, char *buf, size_t size)
   { return Fuse_Interface->fuse_readlink( path, buf, size ); }
-int FuseCppInterface::fuse_readlink(const char *path, char *buf, size_t size)
+inline int FuseCppInterface::fuse_readlink(const char *path, char *buf, size_t size)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = readlink( smartFilePath(path), buf, size - 1);
+  if ( (res = readlink( smartFilePath(path), buf, size - 1)) == -1 )
+    res = readlink( smartFilePath(path, true), buf, size - 1);
   log( "readlink", Smart_Path, res );
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   if (res == -1)
     return -errno;
 
@@ -292,10 +302,10 @@ int FuseCppInterface::fuse_readlink(const char *path, char *buf, size_t size)
 
 static int xmp_opendir(const char *path, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_opendir( path, fi ); }
-int FuseCppInterface::fuse_opendir(const char *path, struct fuse_file_info *fi)
+inline int FuseCppInterface::fuse_opendir(const char *path, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
   struct xmp_dirp *d;
@@ -303,7 +313,7 @@ int FuseCppInterface::fuse_opendir(const char *path, struct fuse_file_info *fi)
     //Quit if the alloc failed
   if ((d = new xmp_dirp()) == NULL)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -ENOMEM;
   }
 
@@ -321,7 +331,7 @@ int FuseCppInterface::fuse_opendir(const char *path, struct fuse_file_info *fi)
   {
     res = -errno;
     delete d;
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return res;
   }
 
@@ -332,8 +342,8 @@ int FuseCppInterface::fuse_opendir(const char *path, struct fuse_file_info *fi)
     log( "opendir_svn", Smart_Path, 0 );
   }
 
-  fi->fh = (unsigned long) d; //Scary!, whats wrong with void*?
-  My_Mutex.unlock();
+   fi->fh = (unsigned long) d; //Scary!, whats wrong with void*?
+  //My_Mutex.unlock();
   return 0;
 }
 
@@ -345,12 +355,12 @@ static inline struct xmp_dirp *get_dirp(struct fuse_file_info *fi)
 static int xmp_readdir(const char *path, void *buf, fuse_fill_dir_t filler,
                         off_t offset, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_readdir( path, buf, filler, offset, fi ); }
-int FuseCppInterface::fuse_readdir(const char *path,void *buf,
+inline int FuseCppInterface::fuse_readdir(const char *path,void *buf,
                                    fuse_fill_dir_t filler,
                                    off_t offset, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   struct xmp_dirp *d = get_dirp(fi);
   struct stat st;
@@ -416,7 +426,7 @@ int FuseCppInterface::fuse_readdir(const char *path,void *buf,
       {
         if (filler(buf, d->entry->d_name, &st, nextoff))
         {
-          My_Mutex.unlock();
+          //My_Mutex.unlock();
           return 0;
         }
         else
@@ -438,7 +448,7 @@ int FuseCppInterface::fuse_readdir(const char *path,void *buf,
       d->entry = readdir(d->svn_dir_p);
       if ( !d->entry )
       {
-        My_Mutex.unlock();
+        //My_Mutex.unlock();
         return 0;
       }
     }
@@ -451,12 +461,12 @@ int FuseCppInterface::fuse_readdir(const char *path,void *buf,
 
       //add this entry if its new
     my_path = QString("%1/%2").arg(path).arg(d->entry->d_name);
-    if ( !d->path_list.contains( my_path ) && 
-          (strcmp( d->entry->d_name, "dupfs_sync" ) == 0 ||
-          strcmp( d->entry->d_name, ".svn" ) == 0) )
+    if ( !d->path_list.contains( my_path ) )// && 
+//          (strcmp( d->entry->d_name, ".dupfs_sync" ) == 0 ||
+//          strcmp( d->entry->d_name, ".svn" ) == 0) )
       if (filler(buf, d->entry->d_name, &st, nextoff))
       {
-        My_Mutex.unlock();
+        //My_Mutex.unlock();
         return 0;
       }
 
@@ -464,16 +474,16 @@ int FuseCppInterface::fuse_readdir(const char *path,void *buf,
     d->offset = nextoff;
   }
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_releasedir(const char *path, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_releasedir( path, fi ); }
-int FuseCppInterface::fuse_releasedir(const char *path, struct fuse_file_info *fi)
+inline int FuseCppInterface::fuse_releasedir(const char *path, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   struct xmp_dirp *d = get_dirp(fi);
 
@@ -487,16 +497,16 @@ int FuseCppInterface::fuse_releasedir(const char *path, struct fuse_file_info *f
     closedir(d->svn_dir_p);
   delete d;
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_mknod(const char *path, mode_t mode, dev_t rdev)
   { return Fuse_Interface->fuse_mknod( path, mode, rdev ); }
-int FuseCppInterface::fuse_mknod(const char *path, mode_t mode, dev_t rdev)
+inline int FuseCppInterface::fuse_mknod(const char *path, mode_t mode, dev_t rdev)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
@@ -509,28 +519,28 @@ int FuseCppInterface::fuse_mknod(const char *path, mode_t mode, dev_t rdev)
     //Make sure it works
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
     
   pushAction( MKNOD, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_mkdir(const char *path, mode_t mode)
   { return Fuse_Interface->fuse_mkdir( path, mode ); }
-int FuseCppInterface::fuse_mkdir(const char *path, mode_t mode)
+inline int FuseCppInterface::fuse_mkdir(const char *path, mode_t mode)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res = 0;
   QString my_path = QString::fromUtf8( path );
 
     //Is this svn running?
-  if ( my_path.indexOf( QRegExp("^/dupfs_sync") ) >= 0 &&
+  if ( my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 &&
       (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
        my_path.indexOf( QRegExp("/[.]svn/") ) >= 0) )
   {
@@ -543,68 +553,70 @@ int FuseCppInterface::fuse_mkdir(const char *path, mode_t mode)
     //Add the directory the user wanted
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
      
   pushAction( MKDIR, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_unlink(const char *path)
   { return Fuse_Interface->fuse_unlink( path ); }
-int FuseCppInterface::fuse_unlink(const char *path)
+inline int FuseCppInterface::fuse_unlink(const char *path)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = unlink( smartFilePath(path) );
+  if ((res = unlink( smartFilePath(path) )) == -1 )
+    res = unlink( smartFilePath(path, true) );
   log( "unlink", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
     
   pushAction( UNLINK, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_rmdir(const char *path)
   { return Fuse_Interface->fuse_rmdir( path ); }
-int FuseCppInterface::fuse_rmdir(const char *path)
+inline int FuseCppInterface::fuse_rmdir(const char *path)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = rmdir(smartFilePath(path));
+  if ((res = rmdir(smartFilePath(path))) == -1 )
+    res = rmdir(smartFilePath(path));
   log( "rmdir", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
     
   pushAction( RMDIR, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_symlink(const char *from, const char *to)
   { return Fuse_Interface->fuse_symlink( from, to ); }
-int FuseCppInterface::fuse_symlink(const char *from, const char *to)
+inline int FuseCppInterface::fuse_symlink(const char *from, const char *to)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
   char from_buf[BUFFER_SIZE];
@@ -617,22 +629,22 @@ int FuseCppInterface::fuse_symlink(const char *from, const char *to)
   log( "sym", to_buf, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
     
   pushAction( SYMLINK, QString::fromUtf8(to), QString::fromUtf8(from) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_rename(const char *from, const char *to)
   { return Fuse_Interface->fuse_rename( from, to ); }
-int FuseCppInterface::fuse_rename(const char *from, const char *to)
+inline int FuseCppInterface::fuse_rename(const char *from, const char *to)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
   char from_buf[BUFFER_SIZE];
@@ -645,22 +657,22 @@ int FuseCppInterface::fuse_rename(const char *from, const char *to)
   log( "rename", to_buf, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( RENAME, QString::fromUtf8(to), QString::fromUtf8(from) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_link(const char *from, const char *to)
   { return Fuse_Interface->fuse_link( from, to ); }
-int FuseCppInterface::fuse_link(const char *from, const char *to)
+inline int FuseCppInterface::fuse_link(const char *from, const char *to)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
   char from_buf[BUFFER_SIZE];
@@ -673,118 +685,121 @@ int FuseCppInterface::fuse_link(const char *from, const char *to)
   log( "link", to_buf, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( HARDLINK, QString::fromUtf8(to), QString::fromUtf8(from) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_chmod(const char *path, mode_t mode)
   { return Fuse_Interface->fuse_chmod( path, mode ); }
-int FuseCppInterface::fuse_chmod(const char *path, mode_t mode)
+inline int FuseCppInterface::fuse_chmod(const char *path, mode_t mode)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = chmod( smartFilePath(path), mode);
+  if ((res = chmod( smartFilePath(path), mode)) == -1 )
+    res = chmod( smartFilePath(path, true), mode);
   log( "chmod", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( CHMOD, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_chown(const char *path, uid_t uid, gid_t gid)
   { return Fuse_Interface->fuse_chown( path, uid, gid ); }
-int FuseCppInterface::fuse_chown(const char *path, uid_t uid, gid_t gid)
+inline int FuseCppInterface::fuse_chown(const char *path, uid_t uid, gid_t gid)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = lchown( smartFilePath(path), uid, gid);
+  if ((res = lchown( smartFilePath(path), uid, gid)) == -1 )
+    res = lchown( smartFilePath(path, true), uid, gid);
   log( "lchown", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( CHOWN, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_truncate(const char *path, off_t size)
   { return Fuse_Interface->fuse_truncate( path, size ); }
-int FuseCppInterface::fuse_truncate(const char *path, off_t size)
+inline int FuseCppInterface::fuse_truncate(const char *path, off_t size)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = truncate( smartFilePath(path), size);
+  if ((res = truncate( smartFilePath(path), size)) == -1 )
+    res = truncate( smartFilePath(path, true), size);
   log( "truncate", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( TRUNCATE, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_ftruncate(const char *path, off_t size,
                          struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_ftruncate( path, size, fi ); }
-int FuseCppInterface::fuse_ftruncate(const char *path, off_t size,
+inline int FuseCppInterface::fuse_ftruncate(const char *path, off_t size,
        struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
   (void) path;
 
-  res = ftruncate(fi->fh, size);
-  log( "ftruncate", Smart_Path, (int)fi->fh );
+  res = ftruncate( get_fhp(fi)->fh, size);
+  log( "ftruncate", Smart_Path, (int) get_fhp(fi)->fh );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( FTRUNCATE, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_utimens(const char *path, const struct timespec ts[2])
   { return Fuse_Interface->fuse_utimens( path, ts ); }
-int FuseCppInterface::fuse_utimens(const char *path, const struct timespec ts[2])
+inline int FuseCppInterface::fuse_utimens(const char *path, const struct timespec ts[2])
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
   struct timeval tv[2];
@@ -794,215 +809,251 @@ int FuseCppInterface::fuse_utimens(const char *path, const struct timespec ts[2]
   tv[1].tv_sec = ts[1].tv_sec;
   tv[1].tv_usec = ts[1].tv_nsec / 1000;
 
-  res = utimes( smartFilePath(path), tv);
+  if ((res = utimes( smartFilePath(path), tv)) == -1 )
+    res = utimes( smartFilePath(path, true), tv);
   log( "utimes", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( UTIMES, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_create(const char *path, mode_t mode, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_create( path, mode, fi ); }
-int FuseCppInterface::fuse_create(const char *path, mode_t mode, 
+inline int FuseCppInterface::fuse_create(const char *path, mode_t mode, 
                               struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int fd;
+  xmp_file_handle* d;
 
   fd = open( smartFilePath(path), fi->flags, mode);
   log( "create", Smart_Path, fd );
   if (fd == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
+    //Send Tell the system we just created a file
   pushAction( CREATE, QString::fromUtf8(path) );
 
-  fi->fh = fd;
-  My_Mutex.unlock();
+    //Alloc my fh struct
+  if ((d = new xmp_file_handle()) == NULL)
+    return -1;
+  
+    //Store my info about this new file
+  d->fh = fd;
+  d->write_action = true;
+  
+  fi->fh = (unsigned long) d; //Scary, whats wrong with using void*? 
+
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_open(const char *path, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_open( path, fi ); }
-int FuseCppInterface::fuse_open(const char *path, struct fuse_file_info *fi)
+inline int FuseCppInterface::fuse_open(const char *path, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int fd;
+  xmp_file_handle* d = NULL;
 
   fd = open( smartFilePath(path), fi->flags);
   log( "open", Smart_Path, fd );
   if (fd == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
+
+    //Alloc my info about this file
+  if ((d = new xmp_file_handle()) == NULL)
+    return -1;
+  
+    //Store my info about this new file
+  d->fh = fd;
+  d->write_action = false;
 
     //Make sure that we only worry about write opens
   if ((fi->flags & O_WRONLY) || (fi->flags & O_RDWR) || (fi->flags & O_APPEND))
   {
+    d->write_action = true;
+
 //    if ( (fi->flags & O_CREAT) )
 //      pushAction( CREATE, QString::fromUtf8(path) );
 //    else
-      pushAction( OPEN, QString::fromUtf8(path) );
+//      pushAction( OPEN, QString::fromUtf8(path) );
   }
 
-  fi->fh = fd;
-  My_Mutex.unlock();
+  fi->fh = (unsigned long) d; //Scary, whats wrong with using void*? 
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_read(const char *path, char *buf, size_t size, 
                     off_t offset, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_read( path, buf, size, offset, fi ); }
-int FuseCppInterface::fuse_read(const char *path, char *buf, size_t size, 
+inline int FuseCppInterface::fuse_read(const char *path, char *buf, size_t size, 
                             off_t offset, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
   (void) path;
-  res = pread(fi->fh, buf, size, offset);
+  res = pread( get_fhp(fi)->fh, buf, size, offset);
   log( "read", path, res );
   if (res == -1)
     res = -errno;
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return res;
 }
 
 static int xmp_write(const char *path, const char *buf, size_t size,
                      off_t offset, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_write( path, buf, size, offset, fi ); }
-int FuseCppInterface::fuse_write(const char *path, const char *buf, size_t size,
+inline int FuseCppInterface::fuse_write(const char *path, const char *buf, size_t size,
          off_t offset, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
+  (void)path;
 
     //Write out my data
-  res = pwrite(fi->fh, buf, size, offset);
+  res = pwrite( get_fhp(fi)->fh, buf, size, offset);
   log( "write", path, res );
   if (res == -1)
     res = -errno;
 
-  pushAction( WRITE, QString::fromUtf8(path) );
+//  pushAction( WRITE, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return res;
 }
 
 static int xmp_statfs(const char *path, struct statvfs *stbuf)
   { return Fuse_Interface->fuse_statfs( path, stbuf ); }
-int FuseCppInterface::fuse_statfs(const char *path, struct statvfs *stbuf)
+inline int FuseCppInterface::fuse_statfs(const char *path, struct statvfs *stbuf)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
 
-  res = statvfs( smartFilePath(path), stbuf);
+  if ((res = statvfs( smartFilePath(path), stbuf)) == -1 )
+    res = statvfs( smartFilePath(path, true), stbuf);
   log( "statfs", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_flush(const char *path, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_flush( path, fi ); }
-int FuseCppInterface::fuse_flush(const char *path, struct fuse_file_info *fi)
+inline int FuseCppInterface::fuse_flush(const char *path, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
+  xmp_file_handle * fp = get_fhp( fi );
 
   /* This is called from every close on an open file, so call the
      close on the underlying filesystem.  But since flush may be
      called multiple times for an open file, this must not really
      close the file.  This is important if used on a network
      filesystem like NFS which flush the data/metadata on close() */
-  res = close(dup(fi->fh));
+  res = close(dup( fp->fh));
   log( "flush", path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
-  pushAction( FLUSH, QString::fromUtf8(path) );
+    //Send a notice if we are opened for write actions
+  if ( fp->write_action )
+    pushAction( FLUSH, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_release(const char *path, struct fuse_file_info *fi)
   { return Fuse_Interface->fuse_release( path, fi ); }
-int FuseCppInterface::fuse_release(const char *path, struct fuse_file_info *fi)
+inline int FuseCppInterface::fuse_release(const char *path, struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
-  log( "close", path, fi->fh );
-  close(fi->fh);
+  xmp_file_handle * fp = get_fhp( fi );
 
-  pushAction( CLOSE, QString::fromUtf8(path) );
+  close( fp->fh);
+  log( "close", path, fp->fh );
 
-  My_Mutex.unlock();
+    //If we were open for write actions then send an update command now
+  if ( fp->write_action )
+    pushAction( CLOSE, QString::fromUtf8(path) );
+
+    //Kill the frame pointer
+  delete fp;
+
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_fsync(const char *path, int isdatasync,
                       struct fuse_file_info *fi)
 { return Fuse_Interface->fuse_fsync( path, isdatasync, fi ); }
-int FuseCppInterface::fuse_fsync(const char *path, int isdatasync,
+inline int FuseCppInterface::fuse_fsync(const char *path, int isdatasync,
          struct fuse_file_info *fi)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   int res;
+  (void)path;
 
     //Pretty crazy code guys!
 #ifndef HAVE_FDATASYNC
   (void) isdatasync;
 #else
   if (isdatasync)
-    res = fdatasync(fi->fh);
+    res = fdatasync( get_fhp(fi)->fh);
   else
 #endif
-    res = fsync(fi->fh);
+    res = fsync( get_fhp(fi)->fh);
   log( "fsync", path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
-  pushAction( FSYNC, QString::fromUtf8(path) );
+  //pushAction( FSYNC, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
@@ -1011,84 +1062,92 @@ int FuseCppInterface::fuse_fsync(const char *path, int isdatasync,
 static int xmp_setxattr(const char *path, const char *name, 
                         const char *value, size_t size, int flags)
   { return Fuse_Interface->fuse_setxattr( path, name, value, size, flags ); }
-int FuseCppInterface::fuse_setxattr(const char *path, const char *name, 
+inline int FuseCppInterface::fuse_setxattr(const char *path, const char *name, 
                                 const char *value, size_t size, int flags)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
-  int res = lsetxattr(smartFilePath(path), name, value, size, flags);
+  int res;
+  if ((res = lsetxattr(smartFilePath(path), name, value, size, flags)) == -1 )
+    res = lsetxattr(smartFilePath(path, true), name, value, size, flags);
   log( "lsetxattr", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( SETXATTR, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 
 static int xmp_getxattr(const char *path, const char *name, char *value,
                         size_t size)
   { return Fuse_Interface->fuse_getxattr( path, name, value, size ); }
-int FuseCppInterface::fuse_getxattr(const char *path, const char *name, char *value,
+inline int FuseCppInterface::fuse_getxattr(const char *path, const char *name, char *value,
       size_t size)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
-  int res = lgetxattr(smartFilePath(path), name, value, size);
+  int res;
+  if ((res = lgetxattr(smartFilePath(path), name, value, size)) == -1 )
+    res = lgetxattr(smartFilePath(path, true), name, value, size);
   log( "lgetxattr", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return res;
 }
 
 static int xmp_listxattr(const char *path, char *list, size_t size)
   { return Fuse_Interface->fuse_listxattr( path, list, size ); }
-int FuseCppInterface::fuse_listxattr(const char *path, char *list, size_t size)
+inline int FuseCppInterface::fuse_listxattr(const char *path, char *list, size_t size)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
-  int res = llistxattr(smartFilePath(path), list, size);
+  int res;
+  if ((res = llistxattr(smartFilePath(path), list, size)) == -1 )
+    res = llistxattr(smartFilePath(path, true), list, size);
   log( "llistxattr", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return res;
 }
 
 static int xmp_removexattr(const char *path, const char *name)
   { return Fuse_Interface->fuse_removexattr( path, name ); }
-int FuseCppInterface::fuse_removexattr(const char *path, const char *name)
+inline int FuseCppInterface::fuse_removexattr(const char *path, const char *name)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
-  int res = lremovexattr(smartFilePath(path), name);
+  int res;
+  if ((res = lremovexattr(smartFilePath(path), name)) == -1 )
+    res = lremovexattr(smartFilePath(path, true), name);
   log( "lremoveattr", Smart_Path, res );
   if (res == -1)
   {
-    My_Mutex.unlock();
+    //My_Mutex.unlock();
     return -errno;
   }
 
   pushAction( REMOVEXATTR, QString::fromUtf8(path) );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return 0;
 }
 #endif /* HAVE_SETXATTR */
@@ -1096,19 +1155,19 @@ int FuseCppInterface::fuse_removexattr(const char *path, const char *name)
 static int xmp_lock(const char *path, struct fuse_file_info *fi, int cmd,
                     struct flock *lock)
   { return Fuse_Interface->fuse_lock( path, fi, cmd, lock ); }
-int FuseCppInterface::fuse_lock(const char *path, struct fuse_file_info *fi, int cmd,
+inline int FuseCppInterface::fuse_lock(const char *path, struct fuse_file_info *fi, int cmd,
         struct flock *lock)
 {
     //Lock My Mutex
-  My_Mutex.lock();
+  //My_Mutex.lock();
 
   (void) path;
   int res;
 
-  res = ulockmgr_op(fi->fh, cmd, lock, &fi->lock_owner,sizeof(fi->lock_owner));
-  log( "lock", path, fi->fh );
+  res = ulockmgr_op( get_fhp(fi)->fh, cmd, lock, &fi->lock_owner,sizeof(fi->lock_owner));
+  log( "lock", path,  get_fhp(fi)->fh );
 
-  My_Mutex.unlock();
+  //My_Mutex.unlock();
   return res;
 }
 

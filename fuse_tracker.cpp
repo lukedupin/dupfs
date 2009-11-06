@@ -2,9 +2,14 @@
 
 #include <QMessageBox>
 #include <QRegExp>
-#include <QStringList>
-#include <QTimer>
 #include <stdlib.h>
+
+  //Called to run a CLI program
+void FuseTracker::runCmd( QString prog )
+{
+  int result;
+  result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
+}
 
   //Init my desktop tracker
 FuseTracker::FuseTracker()
@@ -12,10 +17,13 @@ FuseTracker::FuseTracker()
     //Ensure all my pointers are safely set
   Config = NULL;
   Server = NULL;
+  Svn_Update = NULL;
 
     //My other variables
   My_Port = -1;
   Timer_Started = false;
+  Timer_Count = 0;
+  Thread_Running = false;
   
     //Set my status to not doing anything
   Status = WATCHING;
@@ -61,6 +69,13 @@ bool FuseTracker::startServer( int port )
   while ( !Server->listen( QHostAddress::Any, My_Port ) )
     My_Port++;
 
+    //Craete my svn update timer
+  Svn_Update = new QTimer();
+  connect( Svn_Update, SIGNAL(timeout()), this, SLOT(updateSVN()) );
+  
+    //Start my timer
+  Svn_Update->start( TIMEOUT );
+
   return true;
 }
 
@@ -73,40 +88,44 @@ int FuseTracker::getPort()
   //Called when a new command is sent to me
 void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString path, QString from )
 {
-  qDebug("*%d*", action);
-  int result;
+  //qDebug("*%d*", action);
+
+    //If the path is doubling up on the dupfs sync, then kill one
+  path = path.replace(QRegExp("^/[.]dupfs_sync"), "");
+  if ( !from.isEmpty() )
+    from = from.replace(QRegExp("^/[.]dupfs_sync"), "");
+   //qDebug( "%s", QString("svn * %1%2").arg(Mounted).arg(path).toAscii().data() );
 
     //handle an actino
   switch ( action )
   {
       //Rename
     case FuseCppInterface::RENAME:
-      qDebug( "%s", QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
-      result = system( QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
-      qDebug( "%s", QString("svn remove %1%2").arg(Mounted).arg(from).toAscii().data() );
-      result = system(QString("svn remove %1%2").arg(Mounted).arg(from).toAscii().data());
+      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+      //qDebug( "%s", QString("svn remove %1%2").arg(Mounted).arg(from).toAscii().data() );
+      runCmd( QString("/usr/bin/svn remove %1%2").arg(Mounted).arg(from) );
       break;
 
       //links
     case FuseCppInterface::SYMLINK:
     case FuseCppInterface::HARDLINK:
-      qDebug( "%s", QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
-      result = system( QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
+      //qDebug( "%s", QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
+      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
       break;
 
       //Delete
     case FuseCppInterface::UNLINK:
     case FuseCppInterface::RMDIR:
-      qDebug( "%s", QString("svn remove %1%2").arg(Mounted).arg(path).toAscii().data() );
-      result = system(QString("svn remove %1%2").arg(Mounted).arg(path).toAscii().data());
+      //qDebug( "%s", QString("svn remove %1%2").arg(Mounted).arg(path).toAscii().data() );
+      runCmd( QString("/usr/bin/svn remove %1%2").arg(Mounted).arg(path) );
       break;
 
       //Add new files
     case FuseCppInterface::MKNOD:
     case FuseCppInterface::MKDIR:
     case FuseCppInterface::CREATE:
-      qDebug( "%s", QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
-      result = system(QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data());
+      //qDebug( "%s", QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
+      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
       break;
 
     case FuseCppInterface::OPEN:
@@ -121,17 +140,18 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::FSYNC:
     case FuseCppInterface::SETXATTR:
     case FuseCppInterface::REMOVEXATTR:
-      qDebug( "%s", QString("Update required %1%2").arg(Mounted).arg(path).toAscii().data() );
+      //qDebug( "%s", QString("Update required %1%2").arg(Mounted).arg(path).toAscii().data() );
+
       if ( !Timer_Started )
       {
+        Timer_Count = 0;
         Timer_Started = true;
-        QTimer::singleShot( TIMEOUT, this, SLOT(updateSVN()));
       }
       break;
 
       //not sure, just ignore
     default:
-      qDebug( "%s", QString("Not implemented %1%2").arg(Mounted).arg(path).toAscii().data() );
+      //qDebug( "%s", QString("Not implemented %1%2").arg(Mounted).arg(path).toAscii().data() );
       break;
   };
 }
@@ -140,6 +160,56 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
 void FuseTracker::setMounted( QString mounted )
 {
   Mounted = mounted;
+}
+
+  //Runs a thread
+void FuseTracker::run()
+{
+  QString line;
+  QStringList list;
+  int fails = 0;
+
+    //My main thread loopto handle data
+  Thread_Running = true;
+  while ( Thread_Running )
+  {
+      //Run these commands while there is data
+    while ( Data_Read.count() > 0 )
+    {
+      fails = 0;
+
+        //Pull a line from the data list
+      if ( (line = Data_Read.takeFirst()).isEmpty() )
+        continue;
+
+      //qDebug("%s", line.toAscii().data() );
+
+        //Check if its a special command
+      if ( line.indexOf( QRegExp("SVN UPDATE")) >= 0 )
+        runCmd( QString("/usr/bin/svn ci -m \"Filesync\" %1").arg(Mounted) );
+
+        //Run a normal command passing it to the list of svn command handlers
+      else
+      {
+          //split up the data and read out the command sent to us
+        line = line.replace(QRegExp("@"), "").replace(QRegExp("#"), "");
+        list = line.split(QRegExp(","));
+
+          //Got the command
+        if ( list.count() == 2 )
+          gotCommand( (FuseCppInterface::NotableAction)list[0].toInt(), list[1] );
+        else if ( list.count() == 3 )
+          gotCommand( (FuseCppInterface::NotableAction)list[0].toInt(), list[1], list[2] );
+      }
+    }
+
+      //Sleep for a little while waiting for more data
+    usleep( THREAD_SLEEP );
+
+      //Check if we've failed too many times
+    if ( ++fails >= THREAD_FAILED )
+      Thread_Running = false;
+  }
 }
 
   //Set the status of our system
@@ -171,25 +241,34 @@ void FuseTracker::readyRead()
     if ( line.indexOf( QRegExp("^@[0-9]+,.+#$")) < 0 )
       continue;
 
-      //split up the data and read out the command sent to us
-    line = line.replace(QRegExp("@"), "").replace(QRegExp("#"), "");
-    list = line.split(QRegExp(","));
+      //If my thread isn't started then start it
+    if ( !Thread_Running )
+      this->start();
 
-      //Got the command
-    if ( list.count() == 2 )
-      gotCommand( (FuseCppInterface::NotableAction)list[0].toInt(), list[1] );
-    else if ( list.count() == 3 )
-      gotCommand( (FuseCppInterface::NotableAction)list[0].toInt(), list[1], list[2] );
+      //Push this data onto my data list
+    Data_Read.push_back( line );
+
   } while ( Client->canReadLine() );
 }
 
   //Called when we are suppose to update svn
 void FuseTracker::updateSVN()
 {
-  {
-    int result;
-    result = system( QString("cd %1; svn ci -m \"Filesync\"").arg(Mounted).toAscii().data() );
-  }
+  if ( Timer_Started )
+    Timer_Count++;
 
-  Timer_Started = false;
+    //If my timer count is too big, issue and svn update
+  if ( Timer_Count >= TIMER_COUNT_MAX )
+  {
+      //Push a special command onto the stack
+    Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
+
+      //If my thread isn't started then start it
+    if ( !Thread_Running )
+      this->start();
+
+      //Reset my variables
+    Timer_Started = false;
+    Timer_Count = 0;
+  }
 }
