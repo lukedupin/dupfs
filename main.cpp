@@ -23,11 +23,18 @@ int main(int argc, char *argv[])
   QFile config;
   int attempt;
 
+    //If the user didn't give me a config file then quit
+  if ( argc != 2 )
+  {
+    qCritical("Usage: %s CONFIG_FILE", argv[0] );
+    return -1;
+  }
+
     //Alloc my new tracker
   tracker = new FuseTracker();
 
     //Load up my config
-  config.setFileName( "configuration.json" );
+  config.setFileName( argv[1] );
   if ( !config.open( QIODevice::ReadOnly | QIODevice::Text ) )
   {
     qCritical("%s", 
@@ -45,29 +52,36 @@ int main(int argc, char *argv[])
   }
   config.close();
 
-  qDebug("%s\n", (*tracker->config())[0].toAscii().data() );
-
     //Create my fuse thread
   app_argc = 2;
   app_argv = new char*[3];
   app_argv[0] = argv[0];
-  app_argv[1] = "/tmp/test";
+  app_argv[1] = new char[(*tracker->config())["mount_dir"].size()+1];
+  strcpy( app_argv[1], (*tracker->config())["mount_dir"].toAscii().data() );
   app_argv[2] = NULL;
-  fuse = new FuseCppInterface( app_argc, app_argv );
+  fuse = new FuseCppInterface( app_argc, app_argv, tracker->config() );
 
     //Store my mount point in the tracker
-  tracker->setMounted( QString("%1/.dupfs_sync").arg(QString::fromUtf8(app_argv[1])));
+  tracker->setMounted( 
+        QString("%1/.dupfs_sync").arg((*tracker->config())["mount_dir"]));
 
     //Get my boot class ready
   boot_system = new BootSystem();
   boot_system->addInterface( fuse );
   boot_system->addTracker( tracker );
+  boot_system->addConfig( tracker->config() );
 
     //Load up my program
   Q_INIT_RESOURCE(systray);
 
     //Pass fake arguments to qt
-  QApplication app( argc, argv);
+  app_argc = 2;
+  app_argv = new char*[3];
+  app_argv[0] = argv[0];
+  app_argv[1] = new char[(*tracker->config())["mount_dir"].size()+1];
+  strcpy( app_argv[1], (*tracker->config())["mount_dir"].toAscii().data() );
+  app_argv[2] = NULL;
+  QApplication app( app_argc, app_argv);
 
     //Quit out and .... take the ball home   
   attempt = 0;

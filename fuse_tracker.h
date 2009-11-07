@@ -6,6 +6,7 @@
 #include <QDateTime>
 #include <QTcpServer>
 #include <QTcpSocket>
+#include <QUdpSocket>
 #include <QStringList>
 
 #include "orm_light/orm_light.h"
@@ -34,13 +35,13 @@ class FuseTracker : public QThread
   static const int SVN_TIMEOUT = 1000;
 
     //! \brief The amount of time for my thread to sleep
-  static const int THREAD_SLEEP = 50000;
+  static const int THREAD_SLEEP = 50000; //1000 = one milla second
 
     //! \brief The max number of times to fail finding data
   static const int THREAD_FAILED = 10;
     
     //! \brief The number of seconds to wait between updates
-  static const int TIMER_COUNT_MAX = 5;
+  static const int TIMER_COUNT_MAX = 60;
 
     //! \brief Called to run a CLI program
   static void runCmd( QString prog );
@@ -58,14 +59,16 @@ class FuseTracker : public QThread
   QTcpServer*   Server;
     //! \brief Holds my tcp client connection
   QTcpSocket*   Client;
+    //! \brief My UDP socket I listen on for pull requests
+  QUdpSocket*   Udp_Socket;
     //! \brief The mounted directory
   QString       Mounted;
     //! \brief This timer issues svn updates
   QTimer*       Svn_Update;
     //! \brief My port that I end up using
   int My_Port;
-    //! \brief True if a timer is already started
-  bool          Timer_Started;
+    //! \brief True If an svn commit is required
+  bool          Timer_Commit_Started;
     //! \brief Timer count, when this reaches the max, and udpate is issued
   int           Timer_Count;
     //! \brief True if my svn handle thread is running
@@ -127,6 +130,9 @@ class FuseTracker : public QThread
 
     //! \brief Called when the status update timer should be touched
   void updateStatus();
+
+    //! \brief Called when we should read a pending UDP request
+  void readPendingUdpRequest();
 
   signals:
     //! \brief emitted when the state changes

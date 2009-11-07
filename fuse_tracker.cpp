@@ -8,8 +8,8 @@
 void FuseTracker::runCmd( QString prog )
 {
   int result;
-  result = system(QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data());
-  //result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
+  //result = system(QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data());
+  result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
 }
 
   //Init my desktop tracker
@@ -24,7 +24,7 @@ FuseTracker::FuseTracker()
     //My other variables
   Last_Task_Count = 0;
   My_Port = -1;
-  Timer_Started = false;
+  Timer_Commit_Started = false;
   Timer_Count = 0;
   Thread_Running = false;
   Thread_Idle = true;
@@ -87,6 +87,13 @@ bool FuseTracker::startServer( int port )
 
     //Start my timer
   Status_Timer->start( STATUS_TIMEOUT );
+
+    //Create my UDP listen socket
+  Udp_Socket = new QUdpSocket(this);
+  Udp_Socket->bind( (*Config)["external_upd_port"].toInt() );
+
+    //Connect my udp listen data ready event
+  connect( Udp_Socket, SIGNAL(readRead()), this, SLOT(readUdpPendingRequest()));
 
   return true;
 }
@@ -162,11 +169,11 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::SETXATTR:
     case FuseCppInterface::REMOVEXATTR:
         //If my timer isn't start then start it now
-      if ( !Timer_Started )
+      if ( !Timer_Commit_Started )
       {
         addStatus( SYNC_PUSH_REQUIRED );
         Timer_Count = 0;
-        Timer_Started = true;
+        Timer_Commit_Started = true;
       }
       break;
 
@@ -210,12 +217,21 @@ void FuseTracker::run()
       //qDebug("%s", line.toAscii().data() );
 
         //Check if its a special command
-      if ( line.indexOf( QRegExp("SVN UPDATE")) >= 0 )
+      if ( line.indexOf( QRegExp("SVN COMMIT")) >= 0 )
       {
         removeStatus( SYNC_PUSH_REQUIRED );
         addStatus( SYNC_PUSH );
         runCmd( QString("/usr/bin/svn ci -m \"Filesync\" %1").arg(Mounted) );
         removeStatus( SYNC_PUSH );
+      }
+
+        //Check if its a special command
+      else if ( line.indexOf( QRegExp("SVN UPDATE")) >= 0 )
+      {
+        removeStatus( SYNC_PULL_REQUIRED );
+        addStatus( SYNC_PULL );
+        runCmd( QString("/usr/bin/svn update %1").arg(Mounted) );
+        removeStatus( SYNC_PULL );
       }
 
         //Run a normal command passing it to the list of svn command handlers
@@ -238,6 +254,7 @@ void FuseTracker::run()
 
       //Remove any status stuff that might exists
     removeStatus( SYNC_PUSH );
+    removeStatus( SYNC_PULL );
     removeStatus( ADDING_ITEMS );
 
       //Sleep for a little while waiting for more data
@@ -308,25 +325,24 @@ void FuseTracker::readyRead()
 void FuseTracker::updateSVN()
 {
     //Increate my counter if it should be updated
-  if ( Timer_Started && Timer_Count < TIMER_COUNT_MAX )
+  if ( Timer_Commit_Started && Timer_Count < TIMER_COUNT_MAX )
     Timer_Count++;
 
     //If my timer count is too big, issue and svn update
   if ( Timer_Count >= TIMER_COUNT_MAX && Thread_Idle )
   {
       //Push a special command onto the stack
-    Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
+    Data_Read.push_back( QString::fromUtf8("SVN COMMIT") );
 
       //If my thread isn't started then start it
     if ( !Thread_Running )
       this->start();
 
       //Reset my variables
-    Timer_Started = false;
+    Timer_Commit_Started = false;
     Timer_Count = 0;
   }
 }
-
 
   //Called to update any listeners to changes in the trackers status info
 void FuseTracker::updateStatus()
@@ -347,5 +363,35 @@ void FuseTracker::updateStatus()
   {
     Last_Task_Count = Data_Read.count();
     emit tasksRemaining( Last_Task_Count );
+  }
+}
+
+  //Read pending udp request
+void FuseTracker::readPendingUdpRequest()
+{
+    //Loop while we have valid data
+  while (Udp_Socket->hasPendingDatagrams()) 
+  {
+    QHostAddress sender;
+    quint16 senderPort;
+    QByteArray datagram;
+    datagram.resize( Udp_Socket->pendingDatagramSize());
+
+      //Read the datagram waiting for me
+    Udp_Socket->readDatagram(datagram.data(), datagram.size(),
+                             &sender, &senderPort);
+
+      //Check if we are requested to update
+    QRegExp rx("^SVN UPDATE REQUESTED (\\d+)");
+    if ( rx.indexIn(QString(datagram.data())) >= 0 )
+    {
+      QStringList list = rx.capturedTexts();
+
+      //TODO, run svn log -r BASE --xml DIR and confirm the numbers are diff
+
+        //Push a special command onto the stack
+      addStatus( SYNC_PULL_REQUIRED );
+      Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
+    }
   }
 }

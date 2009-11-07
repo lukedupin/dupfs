@@ -181,7 +181,7 @@ void Window::timeout()
       Spin_Idx = -1;
 
         //Log what time it is
-      Tray_Icon->setToolTip(QString("DupFs Adding Files Remaining: %1").arg(Pending_Tasks));
+      Tray_Icon->setToolTip(QString("DupFs Syncing Tasks Remaining: %1").arg(Pending_Tasks));
     }
   }
       //True when the system is currently tracking time

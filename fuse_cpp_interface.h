@@ -7,6 +7,8 @@
 #include <QString>
 #include <QHash>
 
+#include "orm_light/orm_light.h"
+
 #define FUSE_USE_VERSION 26
 
 #ifdef HAVE_CONFIG_H
@@ -96,13 +98,15 @@ class FuseCppInterface {
   int Socket;
     //! \brief Holds the port I should connect on
   int Socket_Port;
+    //! \brief My config information
+  OrmLight* Config;
 
     //! \brief This will push a new action on the front of my list
   bool pushAction( NotableAction action, QString str, QString str2 = QString());
 	
 		public:
 		//Constructor and destructor
-	FuseCppInterface( int argc, char** argv );
+	FuseCppInterface( int argc, char** argv, OrmLight* config );
 
     //Set the server port
   void setPort( int port );

@@ -14,6 +14,12 @@ void BootSystem::addTracker( FuseTracker* tracker )
   Fuse_Tracker = tracker;
 }
 
+  //Assigns my configuration information
+void BootSystem::addConfig( OrmLight* config )
+{
+  Config = config;
+}
+
   //Called to create a timer that will start my system
 void BootSystem::registerSystem()
 {
@@ -25,11 +31,18 @@ void BootSystem::registerSystem()
   //Boot up the system
 void BootSystem::bootSystem()
 {
+  bool port_ok;
+  int port = -1;
+
+    //Figure out waht port we are going to start on
+  port = (*Config)["internal_server_port"].toInt( &port_ok );
+  if ( !port_ok || port <= 0 )
+    port = FuseCppInterface::CONNECT_PORT;
+
     //Start the tracker's server
-  if ( !Fuse_Tracker->startServer( FuseCppInterface::CONNECT_PORT ) )
+  if ( !Fuse_Tracker->startServer( port ) )
   {
-    qCritical( "Error starting TCP Server on port: %d",
-                FuseCppInterface::CONNECT_PORT );
+    qCritical( "Error starting TCP Server on port: %d", port );
     return;
   }
 

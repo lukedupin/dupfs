@@ -1,14 +1,6 @@
-{ "server":
-  {
-    "host": "http://consultantbuddy.com"
-  },
-  "auth": 
-  {
-    "username": "admin",
-    "password": "restless"
-  },
-  "tracking_time":
-  {
-    "round_up": "15"
-  }
+{ "data_dir": "/usr/local/dupfs_sync/data",
+  "svn_dir": "/usr/local/dupfs_sync/23432048932erwwer89werwr38wr",
+  "mount_dir": "/DevSync",
+  "internal_server_port": "15917",
+  "external_upd_port": "16917"
 }

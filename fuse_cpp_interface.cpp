@@ -43,19 +43,22 @@ static void log( const char* msg, const char* path, int result )
 #endif
 
   //Constructor and destructor
-FuseCppInterface::FuseCppInterface( int argc, char** argv ) 
+FuseCppInterface::FuseCppInterface( int argc, char** argv, OrmLight* config ) 
 {
     //Store my startup args
   Argc = argc;
   Argv = argv;
 
+    //Store my config information
+  Config = config;
+
     //Set my connection to be invalid
   Socket = -1;
-  Socket_Port = -1;
+  Socket_Port = CONNECT_PORT;
 
     //Base directories
-  Data_Dir = QString::fromUtf8("/tmp/dev");
-  Svn_Dir = QString::fromUtf8("/usr/local/dupfs_sync/23432048932erwwer89werwr38wr");
+  Data_Dir = (*Config)["data_dir"];
+  Svn_Dir = (*Config)["svn_dir"];
 
     //Store the first creation of this object as the true fuse interface
   if ( Fuse_Interface == NULL )
@@ -89,7 +92,7 @@ bool FuseCppInterface::pushAction( NotableAction action, QString str,
     memcpy( (char *)&addr.sin_addr.s_addr,
             host_resolve->h_addr_list[ 0 ],
             host_resolve->h_length );
-    addr.sin_port = htons( ((Socket_Port > 0)? Socket_Port: CONNECT_PORT) );
+    addr.sin_port = htons( Socket_Port );
 
       //Create the temp socket for connection
     if ( (Socket = socket( AF_INET, SOCK_STREAM, 0 )) < 0 )
