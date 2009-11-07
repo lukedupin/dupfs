@@ -8,7 +8,8 @@
 void FuseTracker::runCmd( QString prog )
 {
   int result;
-  result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
+  result = system(QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data());
+  //result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
 }
 
   //Init my desktop tracker
@@ -18,19 +19,23 @@ FuseTracker::FuseTracker()
   Config = NULL;
   Server = NULL;
   Svn_Update = NULL;
+  Status_Timer = NULL;
 
     //My other variables
+  Last_Task_Count = 0;
   My_Port = -1;
   Timer_Started = false;
   Timer_Count = 0;
   Thread_Running = false;
+  Thread_Idle = true;
   
     //Set my status to not doing anything
   Status = WATCHING;
+  New_Status = WATCHING;
 }
 
   //Return the status of the system
-FuseTracker::SystemStatus FuseTracker::status()
+int FuseTracker::status()
 {
   return Status;
 }
@@ -74,7 +79,14 @@ bool FuseTracker::startServer( int port )
   connect( Svn_Update, SIGNAL(timeout()), this, SLOT(updateSVN()) );
   
     //Start my timer
-  Svn_Update->start( TIMEOUT );
+  Svn_Update->start( SVN_TIMEOUT );
+
+    //Start my status update timer
+  Status_Timer = new QTimer();
+  connect( Status_Timer, SIGNAL(timeout()), this, SLOT(updateStatus()) );
+
+    //Start my timer
+  Status_Timer->start( STATUS_TIMEOUT );
 
   return true;
 }
@@ -101,22 +113,29 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
   {
       //Rename
     case FuseCppInterface::RENAME:
+      addStatus( ADDING_ITEMS );
+
+        //Run the svn comands
       runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
-      //qDebug( "%s", QString("svn remove %1%2").arg(Mounted).arg(from).toAscii().data() );
       runCmd( QString("/usr/bin/svn remove %1%2").arg(Mounted).arg(from) );
       break;
 
       //links
     case FuseCppInterface::SYMLINK:
     case FuseCppInterface::HARDLINK:
-      //qDebug( "%s", QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
+      addStatus( ADDING_ITEMS );
+
+        //Run the svn comands
+      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
       runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
       break;
 
       //Delete
     case FuseCppInterface::UNLINK:
     case FuseCppInterface::RMDIR:
-      //qDebug( "%s", QString("svn remove %1%2").arg(Mounted).arg(path).toAscii().data() );
+      addStatus( ADDING_ITEMS );
+
+        //Run the svn command
       runCmd( QString("/usr/bin/svn remove %1%2").arg(Mounted).arg(path) );
       break;
 
@@ -124,7 +143,9 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::MKNOD:
     case FuseCppInterface::MKDIR:
     case FuseCppInterface::CREATE:
-      //qDebug( "%s", QString("svn add %1%2").arg(Mounted).arg(path).toAscii().data() );
+      addStatus( ADDING_ITEMS );
+
+        //Run the svn command
       runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
       break;
 
@@ -140,10 +161,10 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::FSYNC:
     case FuseCppInterface::SETXATTR:
     case FuseCppInterface::REMOVEXATTR:
-      //qDebug( "%s", QString("Update required %1%2").arg(Mounted).arg(path).toAscii().data() );
-
+        //If my timer isn't start then start it now
       if ( !Timer_Started )
       {
+        addStatus( SYNC_PUSH_REQUIRED );
         Timer_Count = 0;
         Timer_Started = true;
       }
@@ -151,7 +172,6 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
 
       //not sure, just ignore
     default:
-      //qDebug( "%s", QString("Not implemented %1%2").arg(Mounted).arg(path).toAscii().data() );
       break;
   };
 }
@@ -171,11 +191,16 @@ void FuseTracker::run()
 
     //My main thread loopto handle data
   Thread_Running = true;
+  Thread_Idle = true;
   while ( Thread_Running )
   {
       //Run these commands while there is data
     while ( Data_Read.count() > 0 )
     {
+        //Set that the thread isn't idel right now
+      Thread_Idle = false;
+  
+        //Reset my failed read count
       fails = 0;
 
         //Pull a line from the data list
@@ -186,7 +211,12 @@ void FuseTracker::run()
 
         //Check if its a special command
       if ( line.indexOf( QRegExp("SVN UPDATE")) >= 0 )
+      {
+        removeStatus( SYNC_PUSH_REQUIRED );
+        addStatus( SYNC_PUSH );
         runCmd( QString("/usr/bin/svn ci -m \"Filesync\" %1").arg(Mounted) );
+        removeStatus( SYNC_PUSH );
+      }
 
         //Run a normal command passing it to the list of svn command handlers
       else
@@ -203,6 +233,13 @@ void FuseTracker::run()
       }
     }
 
+      //Set that the thread isn't doing anything
+    Thread_Idle = true;
+
+      //Remove any status stuff that might exists
+    removeStatus( SYNC_PUSH );
+    removeStatus( ADDING_ITEMS );
+
       //Sleep for a little while waiting for more data
     usleep( THREAD_SLEEP );
 
@@ -210,17 +247,31 @@ void FuseTracker::run()
     if ( ++fails >= THREAD_FAILED )
       Thread_Running = false;
   }
+
+    //Ensure that the thread is idle, this is over kill and probably not needed
+  Thread_Idle = true;
 }
 
   //Set the status of our system
 void FuseTracker::setStatus( SystemStatus status )
 {
     //If this is a new status, set it
-  if ( Status != status )
-  {
-    Status = status;
-    emit statusChanged( Status );
-  }
+  if ( New_Status != status )
+    New_Status = status;
+}
+
+  //Add a status to the current one
+void FuseTracker::addStatus( SystemStatus status )
+{
+  if ( !(New_Status & status) )
+    New_Status = (New_Status | status);
+}
+
+  //Remove a status to the current one
+void FuseTracker::removeStatus( SystemStatus status )
+{
+  if ( (New_Status & status) )
+    New_Status = (New_Status ^ status);
 }
 
   //Got a new connection
@@ -234,8 +285,10 @@ void FuseTracker::newConnection()
 void FuseTracker::readyRead()
 {
   do {
-    QString line = QString( Client->readLine()).replace(QRegExp("[\n\r]"), "");
     QStringList list;
+
+      //Read a line of data from the socket
+    QString line = QString( Client->readLine()).replace(QRegExp("[\n\r]"), "");
 
       //Quit if this line isn't valid
     if ( line.indexOf( QRegExp("^@[0-9]+,.+#$")) < 0 )
@@ -254,11 +307,12 @@ void FuseTracker::readyRead()
   //Called when we are suppose to update svn
 void FuseTracker::updateSVN()
 {
-  if ( Timer_Started )
+    //Increate my counter if it should be updated
+  if ( Timer_Started && Timer_Count < TIMER_COUNT_MAX )
     Timer_Count++;
 
     //If my timer count is too big, issue and svn update
-  if ( Timer_Count >= TIMER_COUNT_MAX )
+  if ( Timer_Count >= TIMER_COUNT_MAX && Thread_Idle )
   {
       //Push a special command onto the stack
     Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
@@ -270,5 +324,28 @@ void FuseTracker::updateSVN()
       //Reset my variables
     Timer_Started = false;
     Timer_Count = 0;
+  }
+}
+
+
+  //Called to update any listeners to changes in the trackers status info
+void FuseTracker::updateStatus()
+{
+    //If our new status isn't know, then set it to watching
+  if ( New_Status == UNKNOWN )
+    New_Status = WATCHING;
+
+    //Update my status variable
+  if ( Status != New_Status )
+  {
+    Status = New_Status;
+    emit statusChanged( Status );
+  }
+
+    //If there was a change in the task count alert the user
+  if ( Last_Task_Count != Data_Read.count() )
+  {
+    Last_Task_Count = Data_Read.count();
+    emit tasksRemaining( Last_Task_Count );
   }
 }

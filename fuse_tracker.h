@@ -18,18 +18,20 @@ class FuseTracker : public QThread
 
   public:
     //! \enum My system states
-  enum SystemStatus { UNKNOWN,
-                      WATCHING,
-                      SYNC_PULL,
-                      SYNC_PUSH,
-                      SYNC_PULL_REQUIRED,
-                      SYNC_PUSH_REQUIRED,
-                      SYNC_ALL_REQUIRED,
+  enum SystemStatus { UNKNOWN             = 0,
+                      WATCHING            = 1,
+                      ADDING_ITEMS        = 2,
+                      SYNC_PULL           = 4,
+                      SYNC_PUSH           = 8,
+                      SYNC_PULL_REQUIRED  = 16,
+                      SYNC_PUSH_REQUIRED  = 32
+                     };
 
-                      SYSTEM_STATUS_COUNT };
+    //! \brief The timeout interval for my status updating timer
+  static const int STATUS_TIMEOUT = 500;
 
     //! \brief The amount of time in millaseconds to wait before timeout
-  static const int TIMEOUT = 1000;
+  static const int SVN_TIMEOUT = 1000;
 
     //! \brief The amount of time for my thread to sleep
   static const int THREAD_SLEEP = 50000;
@@ -37,8 +39,8 @@ class FuseTracker : public QThread
     //! \brief The max number of times to fail finding data
   static const int THREAD_FAILED = 10;
     
-    //! \brief The max count for my timer count
-  static const int TIMER_COUNT_MAX = 30;
+    //! \brief The number of seconds to wait between updates
+  static const int TIMER_COUNT_MAX = 5;
 
     //! \brief Called to run a CLI program
   static void runCmd( QString prog );
@@ -47,7 +49,11 @@ class FuseTracker : public QThread
     //! \brief My configuration to log in
   OrmLight*     Config;
     //! \brief The current system status
-  SystemStatus  Status;
+  int           Status;
+    //! \brief The new status that might be different
+  int           New_Status;
+    //! \brief My QTimer for my status updater
+  QTimer*       Status_Timer;
     //! \brief The server socket port
   QTcpServer*   Server;
     //! \brief Holds my tcp client connection
@@ -64,15 +70,19 @@ class FuseTracker : public QThread
   int           Timer_Count;
     //! \brief True if my svn handle thread is running
   bool          Thread_Running;
+    //! \brief True if the thread isn't running or its not doing anything
+  bool          Thread_Idle;
     //! \brief Holds the data sent to me
   QStringList   Data_Read;
+    //! \brief The number of tasks that we had on our last pass
+  int           Last_Task_Count;
 
   public:
     //! \brief FuseTracker
   FuseTracker();
 
     //! \brief The status of the system
-  SystemStatus status();
+  int status();
 
     //! \brief Return the configuration
   OrmLight* config();
@@ -100,6 +110,12 @@ class FuseTracker : public QThread
     //! \brief Store status value
   void setStatus( SystemStatus status );
 
+    //! \brief This will add a another status to the current one
+  void addStatus( SystemStatus status );
+
+    //! \brief This will remove a status to the current one
+  void removeStatus( SystemStatus status );
+
     //! \brief Connection made
   void newConnection();
 
@@ -109,10 +125,15 @@ class FuseTracker : public QThread
     //! \brief Called when we should udpate our svn changes
   void updateSVN();
 
-  signals:
+    //! \brief Called when the status update timer should be touched
+  void updateStatus();
 
+  signals:
     //! \brief emitted when the state changes
-  void statusChanged( SystemStatus status );
+  void statusChanged( int );
+
+    //! \brief emiited when the number of tasks has changed
+  void tasksRemaining( int count );
 };
 
 #endif

@@ -52,6 +52,8 @@ class Window : public QDialog
   QTimer            *Timer;
   bool              Visible;
 
+  int               Pending_Tasks;
+
   QHash<QString, QIcon> Icon_Hash;
 
     //Spin icon
@@ -59,7 +61,7 @@ class Window : public QDialog
   QHash<QString, QList<QIcon> > Spin_List;
 
     //Store the last state
-  FuseTracker::SystemStatus Last_Status;
+  int Last_Status;
 
   public:
   Window( FuseTracker* tracker );
@@ -83,6 +85,9 @@ class Window : public QDialog
 
     //! \brief Quit requrest called
   void quitRequest();
+
+    //! \brief Called to let me know how many pending tasks there are
+  void tasksRemaining( int tasks );
 };
 
 #endif

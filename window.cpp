@@ -14,6 +14,7 @@ Window::Window( FuseTracker* tracker )
     //Init my instance variables
   Visible = false;
   Spin_Idx = -1;
+  Pending_Tasks = 0;
 
     //Create my tray menu
   Tray_Icon_Menu = new QMenu(this);
@@ -41,6 +42,8 @@ Window::Window( FuseTracker* tracker )
   Timer = new QTimer();
 
     //Setup my signals/slots
+  connect(Fuse_Tracker, SIGNAL(tasksRemaining(int)), 
+          this, SLOT(tasksRemaining(int)));
   connect(Tray_Icon, SIGNAL(messageClicked()), this, SLOT(messageClicked()));
   connect(Tray_Icon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
           this, SLOT(iconActivated(QSystemTrayIcon::ActivationReason)));
@@ -120,26 +123,22 @@ void Window::showMessage()
   QSystemTrayIcon::MessageIcon icon = QSystemTrayIcon::MessageIcon(
     QSystemTrayIcon::Information );
 
-  switch ( Fuse_Tracker->status() )
-  {
-      //True when the system is currently tracking time
-    case FuseTracker::SYNC_PULL:
-    case FuseTracker::SYNC_PUSH:
-    case FuseTracker::SYNC_PULL_REQUIRED:
-    case FuseTracker::SYNC_PUSH_REQUIRED:
-    case FuseTracker::SYNC_ALL_REQUIRED:
-      Tray_Icon->showMessage("DupFs", 
-                             QString::fromUtf8("DupFs Syncing"), icon, 6000);
-      break;
+    //Get the current status of the fuse tracker
+  int status = Fuse_Tracker->status();
 
-      //Don't do much
-    default:
-    case FuseTracker::WATCHING:
-      Tray_Icon->showMessage("DupFs",
-                              QString::fromUtf8("DupFs Watching"), icon, 6000);
-      Tray_Icon->setToolTip("DupFs");
-      break;
-  }
+    //Figure otu what message we should display
+  if      ( (status & FuseTracker::SYNC_PUSH) )
+    Tray_Icon->showMessage("DupFs", 
+                     QString::fromUtf8("DupFs Uploading Changes"), icon, 6000);
+  else if ( (status & FuseTracker::ADDING_ITEMS) )
+    Tray_Icon->showMessage("DupFs", 
+                           QString::fromUtf8("DupFs Adding Items"), icon, 6000);
+  else
+    Tray_Icon->showMessage("DupFs",
+                           QString::fromUtf8("DupFs Watching"), icon, 6000);
+
+    //Set the tooltip
+  Tray_Icon->setToolTip("DupFs");
 }
 
 void Window::messageClicked()
@@ -151,66 +150,64 @@ void Window::messageClicked()
 
 void Window::timeout()
 {
-    //Take action 
-  switch ( Fuse_Tracker->status() )
+    //Get the current status of the fuse tracker
+  int status = Fuse_Tracker->status();
+
+      //True when the system is currently tracking time
+  if      ( (status & FuseTracker::SYNC_PUSH) )
   {
-      //True when the system is currently tracking time
-    case FuseTracker::WATCHING:
-        //Spin the image around
-      Spin_Idx++;
-      if ( Spin_Idx < Spin_List["green_clock"].size() )
-        Tray_Icon->setIcon(Spin_List["green_clock"][Spin_Idx]);
-      else if ( Spin_Idx >= SPIN_LIST_MAX )
-      {
-        Spin_Idx = -1;
-
-          //Log what time it is
-        Tray_Icon->setToolTip(QString::fromUtf8("DupFs Watching"));
-      }
-      break;
-
-      //True when the system is currently tracking time
-    case FuseTracker::SYNC_PULL_REQUIRED:
-    case FuseTracker::SYNC_PUSH_REQUIRED:
-    case FuseTracker::SYNC_ALL_REQUIRED:
-        //Spin the image around
-      Spin_Idx++;
-      if ( Spin_Idx < Spin_List["blue_clock"].size() )
-        Tray_Icon->setIcon(Spin_List["blue_clock"][Spin_Idx]);
-      else if ( Spin_Idx >= SPIN_LIST_MAX )
-      {
-        Spin_Idx = -1;
-
-          //Log what time it is
-        Tray_Icon->setToolTip(QString::fromUtf8("DupFs Sync Required"));
-      }
-      break;
-
-      //True when the system is currently tracking time
-    case FuseTracker::SYNC_PULL:
-    case FuseTracker::SYNC_PUSH:
-        //Spin the image around
-      Spin_Idx++;
-      if ( Spin_Idx < Spin_List["red_clock"].size() )
-        Tray_Icon->setIcon(Spin_List["red_clock"][Spin_Idx]);
-      else if ( Spin_Idx >= SPIN_LIST_MAX )
-      {
-        Spin_Idx = -1;
-
-          //Log what time it is
-        Tray_Icon->setToolTip(QString::fromUtf8("DupFs Syncing"));
-      }
-      break;
-
-      //Don't do much
-    default:
-      if ( Last_Status == Fuse_Tracker->status() ) return;
-
-        //Reset the thing to a sleeping state
+      //Spin the image around
+    Spin_Idx++;
+    if ( Spin_Idx < Spin_List["red_clock"].size() )
+      Tray_Icon->setIcon(Spin_List["red_clock"][Spin_Idx]);
+    else if ( Spin_Idx >= SPIN_LIST_MAX )
+    {
       Spin_Idx = -1;
-      Tray_Icon->setIcon(Icon_Hash["black_clock"]);
-      Tray_Icon->setToolTip(tr("Consultant Buddy"));
-      break;
+
+        //Log what time it is
+      Tray_Icon->setToolTip(QString::fromUtf8("DupFs Uploading Changes"));
+    }
+  }
+    
+      //True when the system should sync but is wiating to
+  else if ( (status & FuseTracker::ADDING_ITEMS) )
+  {
+      //Spin the image around
+    Spin_Idx++;
+    if ( Spin_Idx < Spin_List["blue_clock"].size() )
+      Tray_Icon->setIcon(Spin_List["blue_clock"][Spin_Idx]);
+    else if ( Spin_Idx >= SPIN_LIST_MAX )
+    {
+      Spin_Idx = -1;
+
+        //Log what time it is
+      Tray_Icon->setToolTip(QString("DupFs Adding Files Remaining: %1").arg(Pending_Tasks));
+    }
+  }
+      //True when the system is currently tracking time
+  else if ( (status & FuseTracker::SYNC_PULL_REQUIRED) ||
+            (status & FuseTracker::SYNC_PUSH_REQUIRED) )
+  {
+      //Spin the image around
+    Spin_Idx++;
+    if ( Spin_Idx < Spin_List["green_clock"].size() )
+      Tray_Icon->setIcon(Spin_List["green_clock"][Spin_Idx]);
+    else if ( Spin_Idx >= SPIN_LIST_MAX )
+    {
+      Spin_Idx = -1;
+
+        //Log what time it is
+      Tray_Icon->setToolTip(QString::fromUtf8("DupFs Sync Required"));
+    }
+  }
+  else// if ( (status & FuseTracker::WATCHING) )
+  {
+    if ( Last_Status == Fuse_Tracker->status() ) return;
+
+      //Reset the thing to a sleeping state
+    Spin_Idx = -1;
+    Tray_Icon->setIcon(Icon_Hash["black_clock"]);
+    Tray_Icon->setToolTip(QString::fromUtf8("DupFs Watching"));
   }
 
     //Store my last status
@@ -225,4 +222,10 @@ void Window::quitRequest()
                             QMessageBox::Ok | QMessageBox::Cancel ) == 
                               QMessageBox::Ok )
     qApp->quit();
+}
+
+  //Teh number of task I have remaining
+void Window::tasksRemaining( int tasks )
+{
+  Pending_Tasks = tasks;
 }
