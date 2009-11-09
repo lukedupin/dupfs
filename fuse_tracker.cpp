@@ -10,10 +10,11 @@ int FuseTracker::runCmd( QString prog )
   int result;
 
     //Tell the user wuzzup
-  qDebug( "%s", QString("/bin/bash -c \"%1\"").arg( prog ).replace(QRegExp("([!$# ])"), "\\\\\\1").toAscii().data() );
+//  qDebug( "%s", QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data() );
+//  result = system( QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data() );
 
-//  result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
-  result = system( QString("/bin/bash -c \"%1\"").arg( prog ).replace(QRegExp("([!$# ])"), "\\\\\\1").toAscii().data() );
+    //Run the users command
+  result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
 
   return result;
 }
@@ -117,10 +118,15 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
   int rm;
   int add;
 
+  QString my_path;
+  QString my_from;
+
     //If the path is doubling up on the dupfs sync, then kill one
   path = path.replace(QRegExp("^/[.]dupfs_sync"), "");
+  my_path = QString("%1%2").arg( Mounted).arg( path).replace(QRegExp("([!$# ])"), "\\\\\\1");
   if ( !from.isEmpty() )
     from = from.replace(QRegExp("^/[.]dupfs_sync"), "");
+    my_from = QString("%1%2").arg( Mounted).arg( from).replace(QRegExp("([!$# ])"), "\\\\\\1");
    //qDebug( "%s", QString("svn * %1%2").arg(Mounted).arg(path).toAscii().data() );
 
     //handle an actino
@@ -131,14 +137,14 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn comands
-      add = runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
-      rm = runCmd( QString("/usr/bin/svn remove --force %1%2").arg(Mounted).arg(from) );
+      add = runCmd( QString("/usr/bin/svn add %1").arg(my_path) );
+      rm = runCmd( QString("/usr/bin/svn remove --force %1").arg(my_from) );
       
         //Add these to my list of changes
       if ( add == 0 )
-        Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
+        Updated_Items[my_path] = true;
       if ( rm != 0 )
-        Updated_Items.remove(QString("%1%2").arg(Mounted).arg(from));
+        Updated_Items.remove(my_from);
       break;
 
       //links
@@ -147,11 +153,11 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn comands
-      add = runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+      add = runCmd( QString("/usr/bin/svn add %1").arg(my_path) );
 
         //Add this new item
       if ( add == 0 )
-        Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
+        Updated_Items[my_path] = true;
       break;
 
       //Delete
@@ -160,11 +166,11 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn command
-      rm = runCmd( QString("/usr/bin/svn remove --force %1%2").arg(Mounted).arg(path) );
+      rm = runCmd( QString("/usr/bin/svn remove --force %1").arg(my_path) );
 
         //Add this new item
       if ( rm != 0 )
-        Updated_Items.remove(QString("%1%2").arg(Mounted).arg(path));
+        Updated_Items.remove(my_path);
       break;
 
       //Add new files
@@ -174,11 +180,11 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn command
-      add = runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+      add = runCmd( QString("/usr/bin/svn add %1").arg(my_path) );
 
         //Add this new item
       if ( add == 0 )
-        Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
+        Updated_Items[my_path] = true;
       break;
 
     case FuseCppInterface::OPEN:
@@ -194,7 +200,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::SETXATTR:
     case FuseCppInterface::REMOVEXATTR:
         //Add this new item for update
-      Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
+      Updated_Items[my_path] = true;
       break;
 
       //not sure, just ignore

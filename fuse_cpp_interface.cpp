@@ -33,7 +33,7 @@ static void log( const char* msg, const char* path, int result )
 #endif
 
   //uncomment to enable locks
-#define DUPFS_USE_LOCKS
+//#define DUPFS_USE_LOCKS
 #ifdef DUPFS_USE_LOCKS
   #define DUPFS_LOCK()    My_Mutex.lock()
   #define DUPFS_UNLOCK()  My_Mutex.unlock()
