@@ -5,11 +5,17 @@
 #include <stdlib.h>
 
   //Called to run a CLI program
-void FuseTracker::runCmd( QString prog )
+int FuseTracker::runCmd( QString prog )
 {
   int result;
-  //result = system(QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data());
-  result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
+
+    //Tell the user wuzzup
+  qDebug( "%s", QString("/bin/bash -c \"%1\"").arg( prog ).replace(QRegExp("([!$# ])"), "\\\\\\1").toAscii().data() );
+
+//  result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
+  result = system( QString("/bin/bash -c \"%1\"").arg( prog ).replace(QRegExp("([!$# ])"), "\\\\\\1").toAscii().data() );
+
+  return result;
 }
 
   //Init my desktop tracker
@@ -93,7 +99,7 @@ bool FuseTracker::startServer( int port )
   Udp_Socket->bind( (*Config)["external_upd_port"].toInt() );
 
     //Connect my udp listen data ready event
-  connect( Udp_Socket, SIGNAL(readRead()), this, SLOT(readUdpPendingRequest()));
+  connect(Udp_Socket, SIGNAL(readyRead()), this, SLOT(readPendingUdpRequest()));
 
   return true;
 }
@@ -108,6 +114,8 @@ int FuseTracker::getPort()
 void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString path, QString from )
 {
   //qDebug("*%d*", action);
+  int rm;
+  int add;
 
     //If the path is doubling up on the dupfs sync, then kill one
   path = path.replace(QRegExp("^/[.]dupfs_sync"), "");
@@ -123,8 +131,14 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn comands
-      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
-      runCmd( QString("/usr/bin/svn remove %1%2").arg(Mounted).arg(from) );
+      add = runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+      rm = runCmd( QString("/usr/bin/svn remove --force %1%2").arg(Mounted).arg(from) );
+      
+        //Add these to my list of changes
+      if ( add == 0 )
+        Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
+      if ( rm != 0 )
+        Updated_Items.remove(QString("%1%2").arg(Mounted).arg(from));
       break;
 
       //links
@@ -133,8 +147,11 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn comands
-      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
-      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+      add = runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+
+        //Add this new item
+      if ( add == 0 )
+        Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
       break;
 
       //Delete
@@ -143,7 +160,11 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn command
-      runCmd( QString("/usr/bin/svn remove %1%2").arg(Mounted).arg(path) );
+      rm = runCmd( QString("/usr/bin/svn remove --force %1%2").arg(Mounted).arg(path) );
+
+        //Add this new item
+      if ( rm != 0 )
+        Updated_Items.remove(QString("%1%2").arg(Mounted).arg(path));
       break;
 
       //Add new files
@@ -153,7 +174,11 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       addStatus( ADDING_ITEMS );
 
         //Run the svn command
-      runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+      add = runCmd( QString("/usr/bin/svn add %1%2").arg(Mounted).arg(path) );
+
+        //Add this new item
+      if ( add == 0 )
+        Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
       break;
 
     case FuseCppInterface::OPEN:
@@ -168,19 +193,24 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::FSYNC:
     case FuseCppInterface::SETXATTR:
     case FuseCppInterface::REMOVEXATTR:
-        //If my timer isn't start then start it now
-      if ( !Timer_Commit_Started )
-      {
-        addStatus( SYNC_PUSH_REQUIRED );
-        Timer_Count = 0;
-        Timer_Commit_Started = true;
-      }
+        //Add this new item for update
+      Updated_Items[QString("%1%2").arg(Mounted).arg(path)] = true;
       break;
 
       //not sure, just ignore
     default:
+      return;
       break;
   };
+
+    //If we got here, we know we got a valid command
+    //If timer isn't started, start it and then quit out
+  if ( !Timer_Commit_Started )
+  {
+    addStatus( SYNC_PUSH_REQUIRED );
+    Timer_Count = 0;
+    Timer_Commit_Started = true;
+  }
 }
 
   //Store the moutned directories
@@ -221,7 +251,16 @@ void FuseTracker::run()
       {
         removeStatus( SYNC_PUSH_REQUIRED );
         addStatus( SYNC_PUSH );
-        runCmd( QString("/usr/bin/svn ci -m \"Filesync\" %1").arg(Mounted) );
+        QString files = QStringList( Updated_Items.keys() ).join(" ");
+
+          //Steal the locks required to make this happen
+        //runCmd( QString("/usr/bin/svn lock --force --non-interactive %2").arg( Updated_Items.count() ).arg( files ) );
+          //Make it happen
+        if ( Updated_Items.count() > 0 )
+          runCmd( QString("/usr/bin/svn ci -m \\\"Updated %1 Items\\\" --non-interactive --depth immediates %2").arg( Updated_Items.count() ).arg( files ) );
+
+          //Clear out all the now updated items
+        Updated_Items.clear();
         removeStatus( SYNC_PUSH );
       }
 
@@ -238,7 +277,6 @@ void FuseTracker::run()
       else
       {
           //split up the data and read out the command sent to us
-        line = line.replace(QRegExp("@"), "").replace(QRegExp("#"), "");
         list = line.split(QRegExp(","));
 
           //Got the command
@@ -308,7 +346,7 @@ void FuseTracker::readyRead()
     QString line = QString( Client->readLine()).replace(QRegExp("[\n\r]"), "");
 
       //Quit if this line isn't valid
-    if ( line.indexOf( QRegExp("^@[0-9]+,.+#$")) < 0 )
+    if ( line.indexOf( QRegExp("^[0-9]+,.+$")) < 0 )
       continue;
 
       //If my thread isn't started then start it

@@ -8,6 +8,7 @@
 #include <QTcpSocket>
 #include <QUdpSocket>
 #include <QStringList>
+#include <QHash>
 
 #include "orm_light/orm_light.h"
 #include "fuse_cpp_interface.h"
@@ -35,16 +36,16 @@ class FuseTracker : public QThread
   static const int SVN_TIMEOUT = 1000;
 
     //! \brief The amount of time for my thread to sleep
-  static const int THREAD_SLEEP = 50000; //1000 = one milla second
+  static const int THREAD_SLEEP = 100000; //1000 = one milla second
 
     //! \brief The max number of times to fail finding data
-  static const int THREAD_FAILED = 10;
+  static const int THREAD_FAILED = 100;
     
     //! \brief The number of seconds to wait between updates
   static const int TIMER_COUNT_MAX = 60;
 
     //! \brief Called to run a CLI program
-  static void runCmd( QString prog );
+  static int runCmd( QString prog );
 
   private:
     //! \brief My configuration to log in
@@ -77,6 +78,8 @@ class FuseTracker : public QThread
   bool          Thread_Idle;
     //! \brief Holds the data sent to me
   QStringList   Data_Read;
+    //! \brief Keeps a list of all changes that have been made
+  QHash<QString, bool> Updated_Items;
     //! \brief The number of tasks that we had on our last pass
   int           Last_Task_Count;
 

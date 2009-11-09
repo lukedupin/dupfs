@@ -18,7 +18,7 @@ static FuseCppInterface* Fuse_Interface = NULL;
 static QMutex My_Mutex;
 
   //Uncomment to add debug output
-//#define DUPFS_DEBUG_LOG
+#define DUPFS_DEBUG_LOG
 #ifdef DUPFS_DEBUG_LOG
 static void log( const char* msg, const char* path, int result )
 {
@@ -110,10 +110,10 @@ bool FuseCppInterface::pushAction( NotableAction action, QString str,
     //Store a new action
   memset( buffer, 0, BUFFER_SIZE );
   if ( str2.isEmpty() )
-    sprintf( buffer, "@%d,%s#\n", action, 
+    sprintf( buffer, "%d,%s\n", action, 
                             str.replace(QRegExp(","), "\\,").toAscii().data() );
   else
-    sprintf( buffer, "@%d,%s,%s#\n", action, 
+    sprintf( buffer, "%d,%s,%s\n", action, 
                             str.replace(QRegExp(","), "\\,").toAscii().data(), 
                             str2.replace(QRegExp(","), "\\,").toAscii().data());
   if ( send( Socket, buffer, strlen( buffer ), 0 ) < 0 )
@@ -141,7 +141,9 @@ char* FuseCppInterface::smartPath( const char* path, bool svn_dir )
     else
       my_path = QString("%1%2").arg( Data_Dir ).arg( 
                     my_path.replace( QRegExp("^/[.]dupfs_sync"), 
-                                      QString::fromUtf8("") ) );
+                                      QString::fromUtf8("") ).
+                            replace( QRegExp("[.]dupfs_svn"), 
+                                      QString::fromUtf8(".svn") ));
   }
   else
     my_path = QString("%1%2").arg( Data_Dir ).arg( my_path );
@@ -169,7 +171,9 @@ char* FuseCppInterface::smartFilePath( const char* path, bool svn_okay )
   else
     my_path = QString("%1%2").arg( Data_Dir ).arg( 
                     my_path.replace( QRegExp("^/[.]dupfs_sync"), 
-                                      QString::fromUtf8("") ) );
+                                      QString::fromUtf8("")).
+                            replace( QRegExp("[.]dupfs_svn"),   
+                                      QString::fromUtf8(".svn") ));
 
     //Copy the path back to my buffer and return the buffer
   if ( my_path.size() < BUFFER_SIZE - 1 )
@@ -379,8 +383,9 @@ inline int FuseCppInterface::fuse_readdir(const char *path,void *buf,
   struct xmp_dirp *d = get_dirp(fi);
   struct stat st;
   off_t nextoff;
+  char replace_filename[] = ".dupfs_svn";
+  char* filename = NULL;
   bool valid;
-  bool skip_entry;
 
     //Figure out if we should hide svn directorys from the data section
   QString my_path;
@@ -420,35 +425,38 @@ inline int FuseCppInterface::fuse_readdir(const char *path,void *buf,
     }
 
       //If we want to skip svn directories check here
-    skip_entry = false;
-    if ( valid && d->svn_dir_p != NULL )
-    {
-      my_path = QString( "%1/%2").arg(path).arg(d->entry->d_name);
-      if ( my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
-           my_path.indexOf( QRegExp("/[.]svn/") ) >= 0 )
-        skip_entry = true;
-    }
-
-      //Read the stats for this item
     if ( valid )
     {
+        //If we have an svn pointer check for ill named directories
+      my_path = QString( "%1/%2").arg(path).arg(d->entry->d_name);
+      if ( d->svn_dir_p != NULL )
+      {
+        if ( my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 ) //|| 
+//           my_path.indexOf( QRegExp("/[.]svn/") ) >= 0 )
+        {
+          filename = replace_filename;
+          my_path = QString( "%1/%2").arg(path).arg(filename);
+        }
+        else
+          filename = d->entry->d_name;
+      }
+      else
+        filename = d->entry->d_name;
+
+        //Gather the information for this file/directory and add it to filler
       memset(&st, 0, sizeof(st));
       st.st_ino = d->entry->d_ino;
       st.st_mode = d->entry->d_type << 12;
       nextoff = telldir(d->data_dir_p);
-      if ( !skip_entry )
+
+        //Add my entry
+      if (filler(buf, filename, &st, nextoff))
       {
-        if (filler(buf, d->entry->d_name, &st, nextoff))
-        {
-          DUPFS_UNLOCK();
-          return 0;
-        }
-        else
-        {
-          my_path = QString("%1/%2").arg(path).arg(d->entry->d_name);
-          d->path_list[my_path] = true;
-        }
+        DUPFS_UNLOCK();
+        return 0;
       }
+      else
+        d->path_list[my_path] = true;
           
       d->entry = NULL;
       d->offset = nextoff;
@@ -901,14 +909,14 @@ inline int FuseCppInterface::fuse_open(const char *path, struct fuse_file_info *
   d->write_action = false;
 
     //Make sure that we only worry about write opens
-  if ((fi->flags & O_WRONLY) || (fi->flags & O_RDWR) || (fi->flags & O_APPEND))
+  if ((fi->flags & O_WRONLY) || (fi->flags & O_RDWR) )
   {
     d->write_action = true;
 
-//    if ( (fi->flags & O_CREAT) )
-//      pushAction( CREATE, QString::fromUtf8(path) );
-//    else
-//      pushAction( OPEN, QString::fromUtf8(path) );
+    if ( (fi->flags & O_CREAT) || (fi->flags & O_APPEND))
+      pushAction( CREATE, QString::fromUtf8(path) );
+    else
+      pushAction( OPEN, QString::fromUtf8(path) );
   }
 
   fi->fh = (unsigned long) d; //Scary, whats wrong with using void*? 
