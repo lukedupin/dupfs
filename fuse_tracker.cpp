@@ -2,6 +2,7 @@
 
 #include <QMessageBox>
 #include <QRegExp>
+#include <QFile>
 #include <stdlib.h>
 
   //Called to run a CLI program
@@ -39,12 +40,21 @@ FuseTracker::FuseTracker()
     //Set my status to not doing anything
   Status = WATCHING;
   New_Status = WATCHING;
+
+    //Set my operation mode to normal
+  Op_Mode = OP_SYNC_MODE;
 }
 
   //Return the status of the system
 int FuseTracker::status()
 {
   return Status;
+}
+
+  //Return the operation mode of the system
+FuseTracker::OperationMode FuseTracker::opMode()
+{
+  return Op_Mode;
 }
 
   //Return the config
@@ -102,6 +112,12 @@ bool FuseTracker::startServer( int port )
     //Connect my udp listen data ready event
   connect(Udp_Socket, SIGNAL(readyRead()), this, SLOT(readPendingUdpRequest()));
 
+    //Emit my operation mode when the system starts
+  emit opModeChanged( Op_Mode );
+
+    //Connect my loaded fuse timer
+  QTimer::singleShot( LOADED_FUSE_COUNT, this, SLOT(loadAfterFuseBooted()));
+
   return true;
 }
 
@@ -142,7 +158,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
       
         //Add these to my list of changes
       if ( add == 0 )
-        Updated_Items[my_path] = true;
+        Updated_Items[my_path] = OrmLight();
       if ( rm != 0 )
         Updated_Items.remove(my_from);
       break;
@@ -157,7 +173,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
 
         //Add this new item
       if ( add == 0 )
-        Updated_Items[my_path] = true;
+        Updated_Items[my_path] = OrmLight();
       break;
 
       //Delete
@@ -177,6 +193,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::MKNOD:
     case FuseCppInterface::MKDIR:
     case FuseCppInterface::CREATE:
+    case FuseCppInterface::OPEN:
       addStatus( ADDING_ITEMS );
 
         //Run the svn command
@@ -184,10 +201,10 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
 
         //Add this new item
       if ( add == 0 )
-        Updated_Items[my_path] = true;
+        Updated_Items[my_path] = OrmLight();
       break;
 
-    case FuseCppInterface::OPEN:
+      //These operations mean we need to update our data at some point
     case FuseCppInterface::CHMOD:
     case FuseCppInterface::CHOWN:
     case FuseCppInterface::TRUNCATE:
@@ -200,7 +217,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString pa
     case FuseCppInterface::SETXATTR:
     case FuseCppInterface::REMOVEXATTR:
         //Add this new item for update
-      Updated_Items[my_path] = true;
+      Updated_Items[my_path] = OrmLight();
       break;
 
       //not sure, just ignore
@@ -257,16 +274,38 @@ void FuseTracker::run()
       {
         removeStatus( SYNC_PUSH_REQUIRED );
         addStatus( SYNC_PUSH );
-        QString files = QStringList( Updated_Items.keys() ).join(" ");
 
-          //Steal the locks required to make this happen
-        //runCmd( QString("/usr/bin/svn lock --force --non-interactive %2").arg( Updated_Items.count() ).arg( files ) );
-          //Make it happen
+          //Depending on my mode, we will handle our commits differently
         if ( Updated_Items.count() > 0 )
-          runCmd( QString("/usr/bin/svn ci -m \\\"Updated %1 Items\\\" --non-interactive --depth immediates %2").arg( Updated_Items.count() ).arg( files ) );
+          switch ( Op_Mode )
+          {
+              //Connect to the server and upload our changes
+            case OP_SYNC_MODE: {
+                //Make a list of all the files to be updated
+              QString files = QStringList( Updated_Items.keys() ).join(" ");
 
-          //Clear out all the now updated items
-        Updated_Items.clear();
+                //Make it happen
+              runCmd( QString("/usr/bin/svn ci -m \\\"Updated %1 Items\\\" --non-interactive --depth immediates %2").arg( Updated_Items.count() ).arg( files ) );
+
+                //Clear out all the now updated items
+              QFile::remove( QString("%1/.dupfs_action_log").
+                              arg((*Config)["svn_dir"]));
+              Updated_Items.clear();
+            } break;
+
+              //Store a local file of the changes to be made at a later time
+            case OP_OFFLINE_MODE: {
+               //save my list of files requiring a change to the FS
+              QString filename = QString("%1/.dupfs_action_log").
+                                  arg((*Config)["svn_dir"]);
+              Updated_Items.saveToFile( filename );
+            } break;
+
+              //not sure what op we are in
+            default: break;
+          }
+
+          //Remove my push stats
         removeStatus( SYNC_PUSH );
       }
 
@@ -311,6 +350,58 @@ void FuseTracker::run()
 
     //Ensure that the thread is idle, this is over kill and probably not needed
   Thread_Idle = true;
+}
+
+  //Called one time after the fuse interface has booted
+void FuseTracker::loadAfterFuseBooted()
+{
+    //Attempt to load an old sync file from another time
+  loadSyncLog( true );
+}
+
+  //Load up a sync log file
+void FuseTracker::loadSyncLog( bool change_state )
+{
+  OrmLight *result = NULL;
+  QString filename = QString("%1/.dupfs_action_log").arg((*Config)["svn_dir"]);
+
+    //Attempt to load our sync_log file
+  try {
+    result = OrmLight::loadFromFile( filename, &Updated_Items);
+  } 
+  catch ( QString str ) {
+    qDebug( "%s", str.toAscii().data() );
+  }
+
+    //If we aren't going to change states, just quit now
+  if ( !change_state || result == NULL )
+    return;
+
+    //Update my state information since we got new data
+  setOpMode( OP_OFFLINE_MODE );
+
+    //If timer isn't started, start it and then quit out
+  if ( !Timer_Commit_Started )
+  {
+    addStatus( SYNC_PUSH_REQUIRED );
+    Timer_Count = 0;
+    Timer_Commit_Started = true;
+  }
+}
+
+  //Set the oepration mode of the system
+void FuseTracker::setOpMode( OperationMode mode )
+{
+    //Check for invalid modes
+  if ( mode == OPERATION_MODE_COUNT )
+    return;
+
+    //Check if we should emit a signal
+  if ( Op_Mode != mode )
+    emit opModeChanged( mode );
+    
+    //Store the new op mode
+  Op_Mode = mode;
 }
 
   //Set the status of our system
@@ -374,18 +465,7 @@ void FuseTracker::updateSVN()
 
     //If my timer count is too big, issue and svn update
   if ( Timer_Count >= TIMER_COUNT_MAX && Thread_Idle )
-  {
-      //Push a special command onto the stack
-    Data_Read.push_back( QString::fromUtf8("SVN COMMIT") );
-
-      //If my thread isn't started then start it
-    if ( !Thread_Running )
-      this->start();
-
-      //Reset my variables
-    Timer_Commit_Started = false;
-    Timer_Count = 0;
-  }
+    forceCommit();
 }
 
   //Called to update any listeners to changes in the trackers status info
@@ -408,6 +488,21 @@ void FuseTracker::updateStatus()
     Last_Task_Count = Data_Read.count();
     emit tasksRemaining( Last_Task_Count );
   }
+}
+
+  //When called, a commit command is issued right now
+void FuseTracker::forceCommit()
+{
+    //Push a special command onto the stack
+  Data_Read.push_back( QString::fromUtf8("SVN COMMIT") );
+
+    //If my thread isn't started then start it
+  if ( !Thread_Running )
+    this->start();
+
+    //Reset my variables
+  Timer_Commit_Started = false;
+  Timer_Count = 0;
 }
 
   //Read pending udp request

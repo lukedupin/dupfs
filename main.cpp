@@ -1,7 +1,6 @@
 #include <unistd.h>
 
 #include <QtGui>
-#include <QFile>
 
 #include "boot_system.h"
 #include "window.h"
@@ -20,7 +19,6 @@ int main(int argc, char *argv[])
   FuseTracker* tracker;
   FuseCppInterface* fuse;
   BootSystem* boot_system;
-  QFile config;
   int attempt;
 
     //If the user didn't give me a config file then quit
@@ -33,24 +31,14 @@ int main(int argc, char *argv[])
     //Alloc my new tracker
   tracker = new FuseTracker();
 
-    //Load up my config
-  config.setFileName( argv[1] );
-  if ( !config.open( QIODevice::ReadOnly | QIODevice::Text ) )
-  {
-    qCritical("%s", 
-          QString("Failed to open %1").arg(config.fileName()).toAscii().data());
-    return 1;
-  }
-
     //Load the config file and store it into my system config
   try {
-    tracker->setConfig( OrmLight::fromJson( QString( config.readAll())) );
+    tracker->setConfig( OrmLight::loadFromFile( argv[1] ) );
   } catch ( QString str ) { 
-    qCritical("Invalid Configuration File (configuration.json)\n\t*%s\n", 
+    qCritical("Invalid Configuration File (%s)\n\t*%s\n", argv[1],
               str.toAscii().data() ); 
     return 2;
   }
-  config.close();
 
     //Create my fuse thread
   app_argc = 2;

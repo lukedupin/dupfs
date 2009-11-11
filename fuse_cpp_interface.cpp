@@ -224,8 +224,9 @@ bool FuseCppInterface::ignoreAction( QString my_path )
 {
     //Is this svn running?
   if (my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 &&
-      (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0 || 
-        my_path.indexOf( QRegExp("/[.]svn/") ) >= 0) )
+      (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0        || 
+       my_path.indexOf( QRegExp("/[.]svn/") ) >= 0      ||
+       my_path.indexOf( QRegExp("[.]dupfs_action_log") ) >= 0))
     return true;
 
   return false;
@@ -392,6 +393,10 @@ inline int FuseCppInterface::fuse_readdir(const char *path,void *buf,
 
     //Log some data
   log( "readdir", path, ((d->svn_dir_p == NULL)? 0: 1) );
+
+    //Hide any mention of the dupfs_action_log file
+  my_path = QString("%1/.dupfs_action_log").arg(path);
+  d->path_list[my_path] = true;
 
     //Based on my open dir read the contents
   if (offset != d->offset) 

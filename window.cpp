@@ -19,14 +19,22 @@ Window::Window( FuseTracker* tracker )
     //Create my tray menu
   Tray_Icon_Menu = new QMenu(this);
 
-//  Tray_Icon_Menu->addAction( 
-//    Current_Time_Action = new QAction(tr("Current Time"), this));
+  Tray_Icon_Menu->addAction( 
+    Upload_Action = new QAction(tr("Upload Changes"), this));
 
-//  Tray_Icon_Menu->addSeparator();
-//  Tray_Icon_Menu->addMenu( 
-//    (Track_Menu = new DTreeMenu( 0, tr("&Track Project"), 
-//                              DTreeMenu::MENU, this))->myMenu());
+    //Create the mode selectino menu
+  Tray_Icon_Menu->addSeparator();
+  Tray_Icon_Menu->addMenu( 
+    Mode_Menu = new QMenu(tr("Select Mode"), this));
+  Mode_Menu->addAction( 
+    Sync_Mode_Action = new QAction(tr("Sync Mode"), this ));
+  Sync_Mode_Action->setCheckable( true );
+  Mode_Menu->addAction( 
+    Offline_Mode_Action = new QAction(tr("Offline Mode"), this ));
+  Offline_Mode_Action->setCheckable( true );
 
+    //Give the user a quit option
+  Tray_Icon_Menu->addSeparator();
   Tray_Icon_Menu->addAction(
     Quit_Action = new QAction(tr("&Quit"), this));
 
@@ -44,10 +52,16 @@ Window::Window( FuseTracker* tracker )
     //Setup my signals/slots
   connect(Fuse_Tracker, SIGNAL(tasksRemaining(int)), 
           this, SLOT(tasksRemaining(int)));
+  connect(Fuse_Tracker, SIGNAL(opModeChanged(int)), 
+          this, SLOT(operationChanged(int)));
   connect(Tray_Icon, SIGNAL(messageClicked()), this, SLOT(messageClicked()));
   connect(Tray_Icon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
           this, SLOT(iconActivated(QSystemTrayIcon::ActivationReason)));
-//  connect(Configure_Action, SIGNAL(triggered()), this, SLOT(showNormal()));
+  connect( Upload_Action, SIGNAL(triggered()), 
+            Fuse_Tracker, SLOT(forceCommit()));
+  connect(Sync_Mode_Action, SIGNAL(triggered()), this, SLOT(syncModeClicked()));
+  connect(Offline_Mode_Action, SIGNAL(triggered()), 
+          this, SLOT(offlineModeClicked()));
   connect(Quit_Action, SIGNAL(triggered()), this, SLOT(quitRequest()));
   connect(Timer, SIGNAL(timeout()), this, SLOT(timeout()));
 
@@ -93,6 +107,41 @@ void Window::closeEvent(QCloseEvent *event)
   if (Tray_Icon->isVisible()) {
       hide();
       event->ignore();
+  }
+}
+
+  //Called when the user selects the system mode
+void Window::syncModeClicked()
+{
+  Fuse_Tracker->setOpMode( FuseTracker::OP_SYNC_MODE );
+}
+
+  //Called when the user selects the offline mode
+void Window::offlineModeClicked()
+{
+  Fuse_Tracker->setOpMode( FuseTracker::OP_OFFLINE_MODE );
+}
+
+  //Called when the operation has changed
+void Window::operationChanged( int mode )
+{
+    //Uncheck all my options
+  Sync_Mode_Action->setChecked( false );
+  Offline_Mode_Action->setChecked( false );
+
+    //Switch through all my modes
+  switch ( static_cast<FuseTracker::OperationMode>(mode) )
+  {
+    case FuseTracker::OP_SYNC_MODE:
+      Sync_Mode_Action->setChecked( true );
+      break;
+
+    case FuseTracker::OP_OFFLINE_MODE:
+      Offline_Mode_Action->setChecked( true );
+      break;
+
+    default:
+      break;
   }
 }
 

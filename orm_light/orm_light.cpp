@@ -1,5 +1,6 @@
 #include <QStringList>
 #include <QRegExp>
+#include <QFile>
 
 #include "orm_light.h"
 
@@ -77,6 +78,28 @@ OrmLight& OrmLight::add( OrmLight value )
 }
 
 
+  //Called to remove an entry from the ormlight object
+int OrmLight::remove( QString key )
+{
+  return this->remove( key );
+}
+
+
+  //Clear out the object
+void OrmLight::clear()
+{
+  Values.clear();
+  Arrays.clear();
+}
+
+
+  //Returns true if both the array and hash are empty
+bool OrmLight::isEmpty()
+{
+  return Values.isEmpty() && Arrays.isEmpty();
+}
+
+
   //Push a value onto the array 
 OrmLight& OrmLight::push( OrmLight val, int idx )
 {
@@ -106,6 +129,14 @@ void OrmLight::pop( int idx )
     Arrays.removeAt(idx);
 }
 
+
+  //Returns the keys from the hash
+QList<QString> OrmLight::keys()
+{
+  return Values.keys();
+}
+
+
   //Return the first element of the array
 OrmLight& OrmLight::first()
 {
@@ -117,6 +148,15 @@ OrmLight& OrmLight::first()
 OrmLight& OrmLight::last()
 {
   return Arrays.back();
+}
+
+  //Return the length of the array
+int OrmLight::count()
+{
+  if ( Arrays.count() > 0 )
+    return Arrays.count();
+
+  return Values.count();
 }
 
 
@@ -178,6 +218,45 @@ QString OrmLight::def( QString key, QString def )
   return Values.value(key, def);
 }
 
+  //Save the json to a file
+bool OrmLight::saveToFile( QString filename )
+{
+    //Write out my data
+  QFile file(filename);
+
+      //Open up this file
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) return false;
+
+    //Convert the file to a QStringList
+  file.write( this->toJson( true ).toAscii() );
+
+    //Close out the file
+  file.close();
+
+  return true;
+}
+
+  //Load json data form a file
+OrmLight* OrmLight::loadFromFile( QString filename, OrmLight* orm )
+{
+  QFile file( filename );
+
+    //Load up my file
+  if ( !file.open( QIODevice::ReadOnly | QIODevice::Text ) )
+  {
+    throw QString("Failed to open %1").arg(file.fileName());
+    return NULL;
+  }
+
+    //Load the file file and store it into my system file
+  orm = OrmLight::fromJson( QString( file.readAll() ), orm );
+
+    //Close down the file
+  file.close();
+
+  return orm;
+}
+
   //Convert this object to json
 QString OrmLight::toJson( bool user_readable )
 {
@@ -226,6 +305,7 @@ OrmLight OrmLight::generate( QString json, int& idx, OrmLight* orm_ptr )
     case SYM_INT:
     case SYM_DOUBLE:
     case SYM_STRING:
+    case SYM_STRING_EMPTY:
       return OrmLight( match );
       break;
 
@@ -334,6 +414,7 @@ QString OrmLight::matchSymbol( QString json, int& idx, OrmLightType::OrmSymbol& 
   QRegExp reg_int("([-]?[0-9]+)");
   QRegExp reg_double("([-]?[0-9]+\\.[0-9]+)");
   QRegExp reg_string("\"(.*[^\\\\])\"");
+  QRegExp reg_string_empty("\"()\"");
   QRegExp reg_colon("(:)");
   QRegExp reg_comma("(,)");
   QRegExp reg_square_left("(\\[)");
@@ -392,6 +473,11 @@ QString OrmLight::matchSymbol( QString json, int& idx, OrmLightType::OrmSymbol& 
   }
 
     //Match a user value
+  else if ( reg_string_empty.indexIn( json, idx) == idx ) 
+  {
+    sym = SYM_STRING_EMPTY;
+    reg = &reg_string_empty;
+  }
   else if ( reg_string.indexIn( json, idx) == idx ) 
   {
     sym = SYM_STRING;

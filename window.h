@@ -33,17 +33,12 @@ class Window : public QDialog
   QSystemTrayIcon   *Tray_Icon;
   QMenu             *Tray_Icon_Menu;
 
-  QAction           *Current_Time_Action;
+  QAction           *Upload_Action;
 
-  QAction           *Start_Stop_Action;
-  QAction           *Record_Action;
+  QMenu             *Mode_Menu;
+  QAction           *Sync_Mode_Action;
+  QAction           *Offline_Mode_Action;
 
-  QMenu             *Edit_Tracking_Menu;
-  QAction           *Update_Desc_Action;
-  QAction           *Add_Thirty_Minutes_Action;
-  QAction           *Alter_Time_Action;
-
-  QAction           *Configure_Action;
   QAction           *Quit_Action;
 
   QVBoxLayout       *Main_Layout;
@@ -71,6 +66,15 @@ class Window : public QDialog
   void closeEvent(QCloseEvent *event);
 
   private slots:
+    //! \brief Called when a user selects the sync operation mode
+  void syncModeClicked();
+
+    //! \brief Called when a user selects the offline operation mode
+  void offlineModeClicked();
+
+    //! \brief Called when an operation changes
+  void operationChanged( int );
+
     //! \brief Called when the user is clicking on the icon
   void iconActivated(QSystemTrayIcon::ActivationReason reason);
 

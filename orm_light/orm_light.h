@@ -9,7 +9,7 @@
 namespace OrmLightType {
   enum OrmLightEnum { ORM_TYPE_VALUE, ORM_TYPE_OBJECT, ORM_TYPE_ARRAY };
   enum OrmLightStatus { ORM_VOID, ORM_LOADED, ORM_TAINTED };
-  enum OrmSymbol {SYM_BOOL, SYM_INT, SYM_DOUBLE, SYM_STRING, 
+  enum OrmSymbol {SYM_BOOL, SYM_INT, SYM_DOUBLE, SYM_STRING, SYM_STRING_EMPTY, 
                   SYM_COLON, SYM_COMMA,
                   SYM_SQUARE_LEFT, SYM_SQUARE_RIGHT,
                   SYM_CURLY_LEFT, SYM_CURLY_RIGHT,
@@ -63,17 +63,32 @@ class OrmLight : public QString {
     */
   OrmLight& add( OrmLight value );
 
+    //! \brief Removes an entry from the hash
+  int remove( QString key );
+
+    //! \brief Clears out all entries inside the orm_light object
+  void clear();
+
+    //! \brief Returns true if the object is empty
+  bool isEmpty();
+
     //! \brief Push an orm object onto the array
   OrmLight& push( OrmLight val, int idx = -1 );
 
     //! \brief Pop the last object of the array
   void pop( int idx = -1 );
 
+    //! \brief Returns the keys of this object
+  QList<QString> keys();
+
     //! \brief Return the first element in my array
   OrmLight& first();
 
     //! \brief Return the last element in my array
   OrmLight& last();
+
+    //! \brief Returns the size of the array stack
+  int count();
 
     //! \brief Return the size of the array stack
   int size();
@@ -83,6 +98,17 @@ class OrmLight : public QString {
 
     //! \brief Returns true if the key exists
   bool contains( QString key );
+
+    /*! \brief Saves the json code to a file
+        \param filename
+    */
+  bool saveToFile( QString filename );
+
+    /*! \brief Loads json from a file into an orm light object
+        \param filename
+        \param orm
+    */
+  static OrmLight* loadFromFile( QString filename, OrmLight* orm = NULL );
 
     /*! \brief Convert this orm_light object to json formatted data
         \param user_readable True if you want the output to be user readable
