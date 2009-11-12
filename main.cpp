@@ -43,7 +43,9 @@ int main(int argc, char *argv[])
     //Create my fuse thread
   app_argc = 2;
   app_argv = new char*[3];
-  app_argv[0] = argv[0];
+  app_argv[0] = new char[ strlen(argv[0]) + 1 ];
+  strcpy( app_argv[0], argv[0] );
+
   app_argv[1] = new char[(*tracker->config())["mount_dir"].size()+1];
   strcpy( app_argv[1], (*tracker->config())["mount_dir"].toAscii().data() );
   app_argv[2] = NULL;
