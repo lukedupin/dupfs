@@ -20,6 +20,7 @@ int main(int argc, char *argv[])
   FuseCppInterface* fuse;
   BootSystem* boot_system;
   int attempt;
+  int res;
 
     //If the user didn't give me a config file then quit
   if ( argc != 2 )
@@ -40,15 +41,25 @@ int main(int argc, char *argv[])
     return 2;
   }
 
+    //Mount bind my data and mount folder
+  res = system((*tracker->config())["mount_bind"].toAscii().data());
+
     //Create my fuse thread
-  app_argc = 2;
-  app_argv = new char*[3];
+  app_argc = 4;
+  app_argv = new char*[app_argc + 1];
   app_argv[0] = new char[ strlen(argv[0]) + 1 ];
   strcpy( app_argv[0], argv[0] );
 
-  app_argv[1] = new char[(*tracker->config())["mount_dir"].size()+1];
-  strcpy( app_argv[1], (*tracker->config())["mount_dir"].toAscii().data() );
-  app_argv[2] = NULL;
+  app_argv[1] = new char[ strlen("-o") + 1 ];
+  strcpy( app_argv[1], "-o" );
+
+  app_argv[2] = new char[ strlen("nonempty") + 1 ];
+  strcpy( app_argv[2], "nonempty" );
+
+  app_argv[3] = new char[(*tracker->config())["mount_dir"].size()+1];
+  strcpy( app_argv[3], (*tracker->config())["mount_dir"].toAscii().data() );
+
+  app_argv[4] = NULL;
   fuse = new FuseCppInterface( app_argc, app_argv, tracker->config() );
 
     //Store my mount point in the tracker
