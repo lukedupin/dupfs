@@ -81,7 +81,7 @@ OrmLight& OrmLight::add( OrmLight value )
   //Called to remove an entry from the ormlight object
 int OrmLight::remove( QString key )
 {
-  return this->remove( key );
+  return Values.remove( key );
 }
 
 

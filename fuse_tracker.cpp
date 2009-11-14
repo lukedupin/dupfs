@@ -1,7 +1,6 @@
 #include "fuse_tracker.h"
 
 #include <QMessageBox>
-#include <QRegExp>
 #include <QFile>
 #include <stdlib.h>
 
@@ -36,6 +35,10 @@ FuseTracker::FuseTracker()
   Timer_Count = 0;
   Thread_Running = false;
   Thread_Idle = true;
+
+    //create my common regex
+  RegEx_Dup.setPattern("^/[.]dupfs_sync");
+  RegEx_Special.setPattern("([!$# ])");
   
     //Set my status to not doing anything
   Status = WATCHING;
@@ -128,22 +131,24 @@ int FuseTracker::getPort()
 }
 
   //Called when a new command is sent to me
-void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, QString path, QString from )
+void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, 
+                              QString path, QString from )
 {
-  //qDebug("*%d*", action);
   int rm;
   int add;
-
   QString my_path;
   QString my_from;
 
     //If the path is doubling up on the dupfs sync, then kill one
-  path = path.replace(QRegExp("^/[.]dupfs_sync"), "");
-  my_path = QString("%1%2").arg( Mounted).arg( path).replace(QRegExp("([!$# ])"), "\\\\\\1");
+  path = path.replace( RegEx_Dup, "");
+  my_path = QString("%1%2").arg( Mounted).arg( path).replace( RegEx_Special, "\\\\\\1");
+
+    //Handle the from information
   if ( !from.isEmpty() )
-    from = from.replace(QRegExp("^/[.]dupfs_sync"), "");
-    my_from = QString("%1%2").arg( Mounted).arg( from).replace(QRegExp("([!$# ])"), "\\\\\\1");
-   //qDebug( "%s", QString("svn * %1%2").arg(Mounted).arg(path).toAscii().data() );
+  {
+    from = from.replace( RegEx_Dup, "");
+    my_from = QString("%1%2").arg( Mounted).arg( from).replace( RegEx_Special, "\\\\\\1");
+  }
 
     //handle an actino
   switch ( action )

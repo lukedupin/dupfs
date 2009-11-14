@@ -11,7 +11,7 @@ unix:OBJECTS_DIR = objects
 unix:MOC_DIR = moc
 
 QT  += network
-CONFIG += qt thread warn_on 
+CONFIG += qt thread warn_on
 LIBS += -I/usr/include/fuse  -pthread -lfuse -lrt -ldl -lulockmgr
 DEFINES += _FILE_OFFSET_BITS=64
 #debug

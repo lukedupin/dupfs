@@ -9,6 +9,7 @@
 #include <QUdpSocket>
 #include <QStringList>
 #include <QHash>
+#include <QRegExp>
 
 #include "orm_light/orm_light.h"
 #include "fuse_cpp_interface.h"
@@ -94,6 +95,10 @@ class FuseTracker : public QThread
   int           Last_Task_Count;
     //! \brief The operating mode of my system
   OperationMode Op_Mode;
+    //! \brief Regex to match common things
+  QRegExp       RegEx_Dup;
+    //! \brief Regex to match common things
+  QRegExp       RegEx_Special;
 
   public:
     //! \brief FuseTracker

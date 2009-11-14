@@ -1,6 +1,6 @@
-{ "mount_bind": "/Development/fuse/dupfs/mount_bin/mount_bind",
+{ "mount_bind": "/home/ldupin/fuse/dupfs/mount_bin/mount_bind",
   "data_dir": "/usr/local/dupfs_sync/data",
-  "svn_dir": "/usr/local/dupfs_sync/23432048932erwwer89werwr38wr",
+  "svn_dir": "/usr/local/dupfs_sync/svn",
   "mount_dir": "/Development",
   "internal_server_port": "15917",
   "external_upd_port": "16917"
