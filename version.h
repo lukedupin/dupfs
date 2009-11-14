@@ -1,5 +1,5 @@
 #ifndef VERSION
-  #define VERSION      "0.0.5"
-  #define VERSION_DATE "Wed Nov 11 03:23:27 -0800 2009"
-  #define VERSION_TAG  "version_0_0_5"
+  #define VERSION      "0.0.6"
+  #define VERSION_DATE "Sat Nov 14 00:25:13 -0800 2009"
+  #define VERSION_TAG  "version_0_0_6"
 #endif
