@@ -223,10 +223,10 @@ int FuseCppInterface::recursiveMkDir( QString path, mode_t mode )
 bool FuseCppInterface::ignoreAction( QString my_path )
 {
     //Is this svn running?
-  if (my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 &&
-      (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0        || 
-       my_path.indexOf( QRegExp("/[.]svn/") ) >= 0      ||
-       my_path.indexOf( QRegExp("[.]dupfs_action_log") ) >= 0))
+  if (my_path.indexOf( QRegExp("^/[.]dupfs_sync") ) >= 0 ||//&&
+//      (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0        || 
+//       my_path.indexOf( QRegExp("/[.]svn/") ) >= 0      ||
+       my_path.indexOf( QRegExp("[.]dupfs_action_log") ) >= 0)
     return true;
 
   return false;

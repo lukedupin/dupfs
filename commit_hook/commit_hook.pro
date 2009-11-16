@@ -16,5 +16,5 @@ CONFIG += qt thread warn_on
 ##QMAKE_CXXFLAGS += -ggdb
 
 # Input
-HEADERS += send_update.h
-SOURCES += main.cpp send_update.cpp
+HEADERS += send_update.h ../orm_light/orm_light.h
+SOURCES += main.cpp send_update.cpp ../orm_light/orm_light.cpp
