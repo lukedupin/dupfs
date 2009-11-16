@@ -18,6 +18,6 @@ DEFINES += _FILE_OFFSET_BITS=64
 ##QMAKE_CXXFLAGS += -ggdb
 
 # Input
-HEADERS += window.h orm_light/orm_light.h fuse_tracker.h d_widget.h fuse_cpp_interface.h boot_system.h
-SOURCES += main.cpp window.cpp orm_light/orm_light.cpp fuse_tracker.cpp d_widget.cpp fuse_cpp_interface.cpp boot_system.cpp
+HEADERS += window.h orm_light/orm_light.h fuse_tracker.h d_widget.h fuse_cpp_interface.h boot_system.h svn_xml_reader.h
+SOURCES += main.cpp window.cpp orm_light/orm_light.cpp fuse_tracker.cpp d_widget.cpp fuse_cpp_interface.cpp boot_system.cpp svn_xml_reader.cpp
 RESOURCES += systray.qrc

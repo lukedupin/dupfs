@@ -45,7 +45,7 @@ void SendUpdate::bootServer()
     //Go through all my orm entries
   for ( i = 0; i < (*Config)["clients"].size(); i++ )
   {
-    QStringList list = (*Config)["clients"].split(":");
+    QStringList list = (*Config)["clients"][i].split(":");
 
       //Set the port we are going touse
     if ( list.size() > 1 )
@@ -53,6 +53,7 @@ void SendUpdate::bootServer()
     if ( list.size() <= 1 || port <= 0 )
       port = PORT;
 
+    qDebug("%s %d", list[0].toAscii().data(), port );
       //Send the data
     udp->writeDatagram( data.toAscii(), QHostAddress(list[0]), port ); 
     usleep( 100000 ); //Sleep a 10th of a second

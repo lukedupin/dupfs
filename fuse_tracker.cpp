@@ -1,20 +1,20 @@
-#include "fuse_tracker.h"
-
+#include <QDateTime>
 #include <QMessageBox>
 #include <QFile>
+#include <stdio.h>
 #include <stdlib.h>
+
+#include "fuse_tracker.h"
+#include "svn_xml_reader.h"
 
   //Called to run a CLI program
 int FuseTracker::runCmd( QString prog )
 {
   int result;
 
-    //Tell the user wuzzup
-//  qDebug( "%s", QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data() );
-//  result = system( QString("/bin/bash -c \"%1\"").arg( prog ).toAscii().data() );
-
     //Run the users command
   result = system( QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
+  qDebug( "%s", QString("/bin/bash -c \"%1 &> /dev/null\"").arg( prog ).toAscii().data() );
 
   return result;
 }
@@ -110,7 +110,7 @@ bool FuseTracker::startServer( int port )
 
     //Create my UDP listen socket
   Udp_Socket = new QUdpSocket(this);
-  Udp_Socket->bind( (*Config)["external_upd_port"].toInt() );
+  Udp_Socket->bind( (*Config)["external_udp_port"].toInt() );
 
     //Connect my udp listen data ready event
   connect(Udp_Socket, SIGNAL(readyRead()), this, SLOT(readPendingUdpRequest()));
@@ -286,6 +286,8 @@ void FuseTracker::run()
           {
               //Connect to the server and upload our changes
             case OP_SYNC_MODE: {
+              updateRev();
+
                 //Make a list of all the files to be updated
               QString files = QStringList( Updated_Items.keys() ).join(" ");
 
@@ -319,7 +321,9 @@ void FuseTracker::run()
       {
         removeStatus( SYNC_PULL_REQUIRED );
         addStatus( SYNC_PULL );
-        runCmd( QString("/usr/bin/svn update %1").arg(Mounted) );
+        QStringList list = updateFiles();
+
+        runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
         removeStatus( SYNC_PULL );
       }
 
@@ -392,6 +396,59 @@ void FuseTracker::loadSyncLog( bool change_state )
     Timer_Count = 0;
     Timer_Commit_Started = true;
   }
+}
+
+  //Called to touch the rev file
+void FuseTracker::updateRev()
+{
+  QString my_path = QString("%1%2").arg( Mounted).arg("/.dupfs_rev").
+                      replace( RegEx_Special, "\\\\\\1");
+  QFile file( my_path );
+  int add;
+
+    //Write out the file
+  if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+    return;
+
+    //Update the file with some shiz
+  file.write( QDateTime::currentDateTime().toString().toAscii() );
+
+  file.close();
+
+    //Ensure this file is added
+  add = runCmd( QString("/usr/bin/svn add %1").arg(my_path) );
+
+    //Add myself to the update shizzel
+  Updated_Items[my_path] = OrmLight();
+}
+
+  //Called to figure out what files are out of date
+QStringList FuseTracker::updateFiles()
+{
+  int i;
+  int r;
+  QString my_path = QString("%1%2").arg( Mounted).arg("/.dupfs_rev").
+                      replace( RegEx_Special, "\\\\\\1");
+  OrmLight revs;
+  QStringList files;
+
+    //Figure out what files we need
+  revs = SvnXmlReader::readSvnXml( 
+            QString("/usr/bin/svn log --xml -v -r BASE:HEAD %1").arg(my_path),
+            SvnXmlReader::SVN_XML_LOG );
+
+    //Load up the revs into a string list and sort it
+  QStringList list = QStringList( revs.keys() );
+  qDebug( "%s", list.join(" ").toAscii().data() );
+  list.sort();
+
+    //Now we go through all revs that we need to update nad make a file list
+    //We skip the first one since that is always the current log entry
+  for ( i = 1; i < list.size(); i++ )
+    for ( r = 0; r < revs[list[i]]["paths"].size(); r++ )
+      files.push_back( revs[list[i]]["paths"][r].replace( RegEx_Special, "\\\\\\1") );
+
+  return files;
 }
 
   //Set the oepration mode of the system
@@ -531,11 +588,15 @@ void FuseTracker::readPendingUdpRequest()
     {
       QStringList list = rx.capturedTexts();
 
-      //TODO, run svn log -r BASE --xml DIR and confirm the numbers are diff
+      //TODO protect agains a dick sending a bunch of udp update commands
 
         //Push a special command onto the stack
       addStatus( SYNC_PULL_REQUIRED );
       Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
+
+        //If my thread isn't started then start it
+      if ( !Thread_Running )
+        this->start();
     }
   }
 }

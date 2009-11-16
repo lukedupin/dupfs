@@ -1,4 +1,4 @@
-{ "mount_bind": "/home/ldupin/fuse/dupfs/mount_bin/mount_bind",
+{ "mount_bind": "/Development/fuse/dupfs/mount_bin/mount_bind",
   "data_dir": "/usr/local/dupfs_sync/data",
   "svn_dir": "/usr/local/dupfs_sync/svn",
   "mount_dir": "/Development",

@@ -1,5 +1,8 @@
 #include "boot_system.h"
 
+#include "svn_xml_reader.h"
+#include <QCoreApplication>
+
 #include <QTimer>
 
   //Called to add the interface

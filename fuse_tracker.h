@@ -134,6 +134,12 @@ class FuseTracker : public QThread
     //! \brief Called to load up the sync log file that might exist
   void loadSyncLog( bool change_state = false );
 
+    //! \brief When called, it touches the rev file
+  void updateRev();
+
+    //! \brief Figure out what files are out of data
+  QStringList updateFiles();
+
   private slots:
 
     //! \brief Called once when the fuse interface is booted
