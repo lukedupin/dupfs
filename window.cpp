@@ -22,6 +22,9 @@ Window::Window( FuseTracker* tracker )
   Tray_Icon_Menu->addAction( 
     Upload_Action = new QAction(tr("Upload Changes"), this));
 
+  Tray_Icon_Menu->addAction( 
+    Download_Action = new QAction(tr("Download Changes"), this));
+
     //Create the mode selectino menu
   Tray_Icon_Menu->addSeparator();
   Tray_Icon_Menu->addMenu( 
@@ -59,6 +62,8 @@ Window::Window( FuseTracker* tracker )
           this, SLOT(iconActivated(QSystemTrayIcon::ActivationReason)));
   connect( Upload_Action, SIGNAL(triggered()), 
             Fuse_Tracker, SLOT(forceCommit()));
+  connect( Download_Action, SIGNAL(triggered()), 
+            Fuse_Tracker, SLOT(forceUpdate()));
   connect(Sync_Mode_Action, SIGNAL(triggered()), this, SLOT(syncModeClicked()));
   connect(Offline_Mode_Action, SIGNAL(triggered()), 
           this, SLOT(offlineModeClicked()));
@@ -179,6 +184,9 @@ void Window::showMessage()
   if      ( (status & FuseTracker::SYNC_PUSH) )
     Tray_Icon->showMessage("DupFs", 
                      QString::fromUtf8("DupFs Uploading Changes"), icon, 6000);
+  else if ( (status & FuseTracker::SYNC_PULL) )
+    Tray_Icon->showMessage("DupFs", 
+                     QString::fromUtf8("DupFs Downloading Changes"), icon,6000);
   else if ( (status & FuseTracker::ADDING_ITEMS) )
     Tray_Icon->showMessage("DupFs", 
                            QString::fromUtf8("DupFs Adding Items"), icon, 6000);
@@ -215,6 +223,22 @@ void Window::timeout()
 
         //Log what time it is
       Tray_Icon->setToolTip(QString::fromUtf8("DupFs Uploading Changes"));
+    }
+  }
+
+      //True when the system is currently tracking time
+  else if ( (status & FuseTracker::SYNC_PULL) )
+  {
+      //Spin the image around
+    Spin_Idx++;
+    if ( Spin_Idx < Spin_List["red_clock"].size() )
+      Tray_Icon->setIcon(Spin_List["red_clock"][Spin_Idx]);
+    else if ( Spin_Idx >= SPIN_LIST_MAX )
+    {
+      Spin_Idx = -1;
+
+        //Log what time it is
+      Tray_Icon->setToolTip(QString::fromUtf8("DupFs Downloading Changes"));
     }
   }
     

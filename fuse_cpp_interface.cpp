@@ -52,6 +52,9 @@ FuseCppInterface::FuseCppInterface( int argc, char** argv, OrmLight* config )
     //Store my config information
   Config = config;
 
+    //Store my track filename
+  Track_Filename = (*Config)["track_filename"];
+
     //Set my connection to be invalid
   Socket = -1;
   Socket_Port = CONNECT_PORT;
@@ -227,7 +230,7 @@ bool FuseCppInterface::ignoreAction( QString my_path )
 //      (my_path.indexOf( QRegExp("/[.]svn$") ) >= 0        || 
 //       my_path.indexOf( QRegExp("/[.]svn/") ) >= 0      ||
        my_path.indexOf( QRegExp("[.]dupfs_action_log") ) >= 0 ||
-       my_path.indexOf( QRegExp("[.]dupfs_rev") ) >= 0 )
+       my_path.indexOf( Track_Filename ) >= 0 )
     return true;
 
   return false;
@@ -399,8 +402,8 @@ inline int FuseCppInterface::fuse_readdir(const char *path,void *buf,
   my_path = QString("%1/.dupfs_action_log").arg(path);
   d->path_list[my_path] = true;
 
-    //Hide any mention of the dupfs_rev file
-  my_path = QString("%1/.dupfs_rev").arg(path);
+    //Hide any mention of the track file
+  my_path = QString("%1/%2").arg(path).arg(Track_Filename);
   d->path_list[my_path] = true;
 
     //Based on my open dir read the contents

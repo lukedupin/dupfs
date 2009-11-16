@@ -177,6 +177,9 @@ class FuseTracker : public QThread
     //! \brief When called, a commit command is issued immediately
   void forceCommit();
 
+    //! \brief Called to force an update with the repo
+  void forceUpdate();
+
   signals:
     //! \brief emitted when the operation mode changes
   void opModeChanged( int );

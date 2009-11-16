@@ -288,6 +288,11 @@ void FuseTracker::run()
             case OP_SYNC_MODE: {
               updateRev();
 
+                //Conduct an update before we commit to avoid conflicts
+              QStringList list = updateFiles();
+              if ( list.size() > 0 )
+                runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
+
                 //Make a list of all the files to be updated
               QString files = QStringList( Updated_Items.keys() ).join(" ");
 
@@ -319,12 +324,18 @@ void FuseTracker::run()
         //Check if its a special command
       else if ( line.indexOf( QRegExp("SVN UPDATE")) >= 0 )
       {
-        removeStatus( SYNC_PULL_REQUIRED );
-        addStatus( SYNC_PULL );
-        QStringList list = updateFiles();
+          //Only do this if we aren't offline
+        if ( Op_Mode != OP_OFFLINE_MODE )
+        {
+          removeStatus( SYNC_PULL_REQUIRED );
+          addStatus( SYNC_PULL );
 
-        runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
-        removeStatus( SYNC_PULL );
+            //Issue my update command
+          QStringList list = updateFiles();
+          runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
+
+          removeStatus( SYNC_PULL );
+        }
       }
 
         //Run a normal command passing it to the list of svn command handlers
@@ -366,6 +377,9 @@ void FuseTracker::loadAfterFuseBooted()
 {
     //Attempt to load an old sync file from another time
   loadSyncLog( true );
+
+    //Issue an svn update to ensure we are synced
+  forceUpdate();
 }
 
   //Load up a sync log file
@@ -401,8 +415,9 @@ void FuseTracker::loadSyncLog( bool change_state )
   //Called to touch the rev file
 void FuseTracker::updateRev()
 {
-  QString my_path = QString("%1%2").arg( Mounted).arg("/.dupfs_rev").
-                      replace( RegEx_Special, "\\\\\\1");
+  QString my_path = QString("%1/%2").arg(Mounted)
+                                    .arg((*Config)["track_filename"])
+                                    .replace( RegEx_Special, "\\\\\\1");
   QFile file( my_path );
   int add;
 
@@ -427,8 +442,9 @@ QStringList FuseTracker::updateFiles()
 {
   int i;
   int r;
-  QString my_path = QString("%1%2").arg( Mounted).arg("/.dupfs_rev").
-                      replace( RegEx_Special, "\\\\\\1");
+  QString my_path = QString("%1/%2").arg(Mounted)
+                                    .arg((*Config)["track_filename"])
+                                    .replace( RegEx_Special, "\\\\\\1");
   OrmLight revs;
   QStringList files;
 
@@ -446,7 +462,10 @@ QStringList FuseTracker::updateFiles()
     //We skip the first one since that is always the current log entry
   for ( i = 1; i < list.size(); i++ )
     for ( r = 0; r < revs[list[i]]["paths"].size(); r++ )
-      files.push_back( revs[list[i]]["paths"][r].replace( RegEx_Special, "\\\\\\1") );
+      files.push_back( QString("%1%2").arg(Mounted).arg(revs[list[i]]["paths"][r]).replace( RegEx_Special, "\\\\\\1") );
+
+    //Always push my track file onto the list of updates
+  files.push_back( my_path );
 
   return files;
 }
@@ -565,6 +584,18 @@ void FuseTracker::forceCommit()
     //Reset my variables
   Timer_Commit_Started = false;
   Timer_Count = 0;
+}
+
+  //When called, a commit command is issued right now
+void FuseTracker::forceUpdate()
+{
+    //Push a special command onto the stack
+  addStatus( SYNC_PULL_REQUIRED );
+  Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
+
+    //If my thread isn't started then start it
+  if ( !Thread_Running )
+    this->start();
 }
 
   //Read pending udp request

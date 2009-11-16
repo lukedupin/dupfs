@@ -100,6 +100,8 @@ class FuseCppInterface {
   int Socket_Port;
     //! \brief My config information
   OrmLight* Config;
+    //! \brief My track filename
+  QString   Track_Filename;
 
     //! \brief This will push a new action on the front of my list
   bool pushAction( NotableAction action, QString str, QString str2 = QString());

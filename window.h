@@ -34,6 +34,7 @@ class Window : public QDialog
   QMenu             *Tray_Icon_Menu;
 
   QAction           *Upload_Action;
+  QAction           *Download_Action;
 
   QMenu             *Mode_Menu;
   QAction           *Sync_Mode_Action;
