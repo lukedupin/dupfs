@@ -81,6 +81,8 @@ class FuseCppInterface {
     FSYNC         = 17,
     SETXATTR      = 18,
     REMOVEXATTR   = 19,
+    SVN_UPDATE    = 20,
+    SVN_COMMIT    = 21,
 
     NOTABLE_ACTIONS_COUNT };
 

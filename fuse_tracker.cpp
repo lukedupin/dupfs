@@ -132,62 +132,26 @@ int FuseTracker::getPort()
 
   //Called when a new command is sent to me
 void FuseTracker::gotCommand( FuseCppInterface::NotableAction action, 
-                              QString path, QString from )
+                              QString path )
 {
   int rm;
   int add;
   QString my_path;
-  QString my_from;
 
     //If the path is doubling up on the dupfs sync, then kill one
   path = path.replace( RegEx_Dup, "");
   my_path = QString("%1%2").arg( Mounted).arg( path).replace( RegEx_Special, "\\\\\\1");
 
-    //Handle the from information
-  if ( !from.isEmpty() )
-  {
-    from = from.replace( RegEx_Dup, "");
-    my_from = QString("%1%2").arg( Mounted).arg( from).replace( RegEx_Special, "\\\\\\1");
-  }
-
     //handle an actino
   switch ( action )
   {
-      //Rename
-    case FuseCppInterface::RENAME:
-      addStatus( ADDING_ITEMS );
-
-        //Run the svn comands
-      add = runCmd( QString("/usr/bin/svn add %1").arg(my_path) );
-      rm = runCmd( QString("/usr/bin/svn remove --force %1").arg(my_from) );
-      
-        //Add these to my list of changes
-      if ( add == 0 )
-        Updated_Items[my_path] = OrmLight();
-      if ( rm != 0 )
-        Updated_Items.remove(my_from);
-      break;
-
-      //links
-    case FuseCppInterface::SYMLINK:
-    case FuseCppInterface::HARDLINK:
-      addStatus( ADDING_ITEMS );
-
-        //Run the svn comands
-      add = runCmd( QString("/usr/bin/svn add %1").arg(my_path) );
-
-        //Add this new item
-      if ( add == 0 )
-        Updated_Items[my_path] = OrmLight();
-      break;
-
       //Delete
     case FuseCppInterface::UNLINK:
     case FuseCppInterface::RMDIR:
       addStatus( ADDING_ITEMS );
 
         //Run the svn command
-      rm = runCmd( QString("/usr/bin/svn remove --force %1").arg(my_path) );
+      rm = runCmd( QString("/usr/bin/svn remove %1").arg(my_path) );
 
         //Add this new item
       if ( rm != 0 )
@@ -195,6 +159,9 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action,
       break;
 
       //Add new files
+    case FuseCppInterface::SYMLINK:
+    case FuseCppInterface::HARDLINK:
+
     case FuseCppInterface::MKNOD:
     case FuseCppInterface::MKDIR:
     case FuseCppInterface::CREATE:
@@ -225,7 +192,68 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action,
       Updated_Items[my_path] = OrmLight();
       break;
 
+      //Handle an svn update
+    case FuseCppInterface::SVN_COMMIT:
+      removeStatus( SYNC_PUSH_REQUIRED );
+      addStatus( SYNC_PUSH );
+
+        //If there aren't any updated items, quit out now
+      if ( Updated_Items.count() > 0 )
+        return;
+
+        //handle our sync mode
+      if ( Op_Mode == OP_SYNC_MODE )
+      {
+        updateRev();
+
+          //Conduct an update before we commit to avoid conflicts
+        QStringList list = updateFiles();
+        if ( list.size() > 0 )
+          runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
+
+          //Make a list of all the files to be updated
+        QString files = QStringList( Updated_Items.keys() ).join(" ");
+
+          //Make it happen
+        runCmd( QString("/usr/bin/svn ci -m \\\"Updated %1 Items\\\" --non-interactive --depth immediates %2").arg( Updated_Items.count() ).arg( files ) );
+
+          //Clear out all the now updated items
+        QFile::remove( QString("%1/.dupfs_action_log").
+                              arg((*Config)["svn_dir"]));
+        Updated_Items.clear();
+      }
+            //Store a local file of the changes to be made at a later time
+      else if ( Op_Mode == OP_OFFLINE_MODE )
+      {
+          //save my list of files requiring a change to the FS
+        QString filename = QString("%1/.dupfs_action_log").
+                                arg((*Config)["svn_dir"]);
+        Updated_Items.saveToFile( filename );
+      }
+
+        //Remove my push stats
+      removeStatus( SYNC_PUSH );
+      break;
+
+      //Check if its a special command
+    case FuseCppInterface::SVN_UPDATE:
+        //Only do this if we aren't offline
+      if ( Op_Mode != OP_OFFLINE_MODE )
+      {
+        removeStatus( SYNC_PULL_REQUIRED );
+        addStatus( SYNC_PULL );
+
+          //Issue my update command
+        QStringList list = updateFiles();
+        runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
+
+        removeStatus( SYNC_PULL );
+      }
+      break;
+
+
       //not sure, just ignore
+    case FuseCppInterface::RENAME:
     default:
       return;
       break;
@@ -250,7 +278,7 @@ void FuseTracker::setMounted( QString mounted )
   //Runs a thread
 void FuseTracker::run()
 {
-  QString line;
+  QPair<FuseCppInterface::NotableAction, QString> item;
   QStringList list;
   int fails = 0;
 
@@ -269,87 +297,14 @@ void FuseTracker::run()
       fails = 0;
 
         //Pull a line from the data list
-      if ( (line = Data_Read.takeFirst()).isEmpty() )
+      if ( (item = Data_Read.takeFirst()).second.isEmpty() )
         continue;
 
-      //qDebug("%s", line.toAscii().data() );
+        //Remove any existances of this guy from the hash
+      Data_Hash.remove( item.second );
 
-        //Check if its a special command
-      if ( line.indexOf( QRegExp("SVN COMMIT")) >= 0 )
-      {
-        removeStatus( SYNC_PUSH_REQUIRED );
-        addStatus( SYNC_PUSH );
-
-          //Depending on my mode, we will handle our commits differently
-        if ( Updated_Items.count() > 0 )
-          switch ( Op_Mode )
-          {
-              //Connect to the server and upload our changes
-            case OP_SYNC_MODE: {
-              updateRev();
-
-                //Conduct an update before we commit to avoid conflicts
-              QStringList list = updateFiles();
-              if ( list.size() > 0 )
-                runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
-
-                //Make a list of all the files to be updated
-              QString files = QStringList( Updated_Items.keys() ).join(" ");
-
-                //Make it happen
-              runCmd( QString("/usr/bin/svn ci -m \\\"Updated %1 Items\\\" --non-interactive --depth immediates %2").arg( Updated_Items.count() ).arg( files ) );
-
-                //Clear out all the now updated items
-              QFile::remove( QString("%1/.dupfs_action_log").
-                              arg((*Config)["svn_dir"]));
-              Updated_Items.clear();
-            } break;
-
-              //Store a local file of the changes to be made at a later time
-            case OP_OFFLINE_MODE: {
-               //save my list of files requiring a change to the FS
-              QString filename = QString("%1/.dupfs_action_log").
-                                  arg((*Config)["svn_dir"]);
-              Updated_Items.saveToFile( filename );
-            } break;
-
-              //not sure what op we are in
-            default: break;
-          }
-
-          //Remove my push stats
-        removeStatus( SYNC_PUSH );
-      }
-
-        //Check if its a special command
-      else if ( line.indexOf( QRegExp("SVN UPDATE")) >= 0 )
-      {
-          //Only do this if we aren't offline
-        if ( Op_Mode != OP_OFFLINE_MODE )
-        {
-          removeStatus( SYNC_PULL_REQUIRED );
-          addStatus( SYNC_PULL );
-
-            //Issue my update command
-          QStringList list = updateFiles();
-          runCmd( QString("/usr/bin/svn update --force --non-interactive --accept mine-full %1").arg(list.join(" ")));
-
-          removeStatus( SYNC_PULL );
-        }
-      }
-
-        //Run a normal command passing it to the list of svn command handlers
-      else
-      {
-          //split up the data and read out the command sent to us
-        list = line.split(QRegExp(","));
-
-          //Got the command
-        if ( list.count() == 2 )
-          gotCommand( (FuseCppInterface::NotableAction)list[0].toInt(), list[1] );
-        else if ( list.count() == 3 )
-          gotCommand( (FuseCppInterface::NotableAction)list[0].toInt(), list[1], list[2] );
-      }
+        //Handle the command
+      gotCommand( item.first, item.second );
     }
 
       //Set that the thread isn't doing anything
@@ -517,6 +472,14 @@ void FuseTracker::newConnection()
   //Called when there is new data from the filesystem
 void FuseTracker::readyRead()
 {
+  FuseCppInterface::NotableAction action;
+  QStringList list;
+  QString path;
+  QString from;
+  int i;
+  int len;
+
+    //Loop while there is data to read
   do {
     QStringList list;
 
@@ -527,12 +490,83 @@ void FuseTracker::readyRead()
     if ( line.indexOf( QRegExp("^[0-9]+,.+$")) < 0 )
       continue;
 
+      //Split up the data and ensure we have enough items, otherwise read more
+    list = line.split(QRegExp(","));
+    if ( list.count() < 2 )
+      continue;
+
       //If my thread isn't started then start it
     if ( !Thread_Running )
       this->start();
 
-      //Push this data onto my data list
-    Data_Read.push_back( line );
+      //Pull out my action and path
+    action = (FuseCppInterface::NotableAction)list[0].toInt();
+    path = list[1];
+
+      //Run a first pass on my actino type
+    switch ( action )
+    {
+        //Handle the from clause for a rename first, then the normal way
+      case FuseCppInterface::RENAME:
+          //Now we lie and say the action is a create action
+        action = FuseCppInterface::CREATE;
+
+          //If we have the from param, handle that before we handle path
+        if ( list.count() == 3 )
+        {
+          from = list[2];
+
+            //If this guy exists, remove any instance of him first
+          if ( Data_Hash.contains( from ) )
+          {
+              //Kill any occurance of path existing
+            for ( i = 0, len = Data_Read.count(); i < len; i++ )
+              if ( Data_Read[i].second == from )
+              {
+                Data_Read.removeAt(i);
+                --i;
+                --len;
+              }
+          }
+
+            //Set that this path does currently have a dangerous action pending
+          Data_Hash[from] = true;
+
+            //Add the dangerous action that is pending
+          Data_Read.push_back( qMakePair( FuseCppInterface::UNLINK, from) );
+        }
+
+        //None safe operations
+      case FuseCppInterface::UNLINK:
+      case FuseCppInterface::RMDIR:
+
+      case FuseCppInterface::SYMLINK:
+      case FuseCppInterface::HARDLINK:
+      case FuseCppInterface::MKNOD:
+      case FuseCppInterface::MKDIR:
+      case FuseCppInterface::CREATE:
+      case FuseCppInterface::OPEN:
+          //If this guy exists, remove any instance of him first
+        if ( Data_Hash.contains( path ) )
+        {
+            //Kill any occurance of path existing
+          for ( i = 0, len = Data_Read.count(); i < len; i++ )
+            if ( Data_Read[i].second == path )
+            {
+              Data_Read.removeAt(i);
+              --i;
+              --len;
+            }
+        }
+
+          //Set that this path does currently have a dangerous action pending
+        Data_Hash[path] = true;
+
+        //The standard way of handling everything
+      default:
+        Data_Read.push_back( qMakePair( action, path) );
+        break;
+    }
 
   } while ( Client->canReadLine() );
 }
@@ -575,7 +609,8 @@ void FuseTracker::updateStatus()
 void FuseTracker::forceCommit()
 {
     //Push a special command onto the stack
-  Data_Read.push_back( QString::fromUtf8("SVN COMMIT") );
+  Data_Read.push_back( qMakePair( FuseCppInterface::SVN_COMMIT, 
+                                  QString::fromUtf8("NONE")) );
 
     //If my thread isn't started then start it
   if ( !Thread_Running )
@@ -591,7 +626,8 @@ void FuseTracker::forceUpdate()
 {
     //Push a special command onto the stack
   addStatus( SYNC_PULL_REQUIRED );
-  Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
+  Data_Read.push_back( qMakePair( FuseCppInterface::SVN_UPDATE, 
+                                  QString::fromUtf8("NONE")) );
 
     //If my thread isn't started then start it
   if ( !Thread_Running )
@@ -623,7 +659,8 @@ void FuseTracker::readPendingUdpRequest()
 
         //Push a special command onto the stack
       addStatus( SYNC_PULL_REQUIRED );
-      Data_Read.push_back( QString::fromUtf8("SVN UPDATE") );
+      Data_Read.push_back( qMakePair( FuseCppInterface::SVN_UPDATE, 
+                                      QString::fromUtf8("NONE")) );
 
         //If my thread isn't started then start it
       if ( !Thread_Running )

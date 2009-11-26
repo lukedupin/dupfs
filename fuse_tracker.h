@@ -88,7 +88,9 @@ class FuseTracker : public QThread
     //! \brief True if the thread isn't running or its not doing anything
   bool          Thread_Idle;
     //! \brief Holds the data sent to me
-  QStringList   Data_Read;
+  QList<QPair<FuseCppInterface::NotableAction, QString> > Data_Read;
+    //! \brief A hash of all the elements that are added into my data read
+  QHash<QString, bool> Data_Hash;
     //! \brief Keeps a list of all changes that have been made
   OrmLight      Updated_Items;
     //! \brief The number of tasks that we had on our last pass
@@ -123,7 +125,7 @@ class FuseTracker : public QThread
   int getPort();
 
     //! \brief Called when a new command is issued
-  void gotCommand( FuseCppInterface::NotableAction action, QString path, QString from = QString() );
+  void gotCommand( FuseCppInterface::NotableAction action, QString path );
 
     //! \brief Store the mounted directory
   void setMounted( QString mounted );
