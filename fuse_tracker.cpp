@@ -137,6 +137,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action,
   int rm;
   int add;
   QString my_path;
+  bool avoid_update = false;
 
     //If the path is doubling up on the dupfs sync, then kill one
   path = path.replace( RegEx_Dup, "");
@@ -194,6 +195,10 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action,
 
       //Handle an svn update
     case FuseCppInterface::SVN_COMMIT:
+      //qDebug("Running svn commit");
+        //Don't allow this action to cause a new commit
+      avoid_update = true;
+
       removeStatus( SYNC_PUSH_REQUIRED );
       addStatus( SYNC_PUSH );
 
@@ -237,6 +242,10 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action,
 
       //Check if its a special command
     case FuseCppInterface::SVN_UPDATE:
+      //qDebug("Running svn update");
+        //Don't allow this action to cause a new commit
+      avoid_update = true;
+
         //Only do this if we aren't offline
       if ( Op_Mode != OP_OFFLINE_MODE )
       {
@@ -261,7 +270,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action,
 
     //If we got here, we know we got a valid command
     //If timer isn't started, start it and then quit out
-  if ( !Timer_Commit_Started )
+  if ( !avoid_update && !Timer_Commit_Started )
   {
     addStatus( SYNC_PUSH_REQUIRED );
     Timer_Count = 0;
@@ -410,7 +419,7 @@ QStringList FuseTracker::updateFiles()
 
     //Load up the revs into a string list and sort it
   QStringList list = QStringList( revs.keys() );
-  qDebug( "%s", list.join(" ").toAscii().data() );
+  //qDebug( "%s", list.join(" ").toAscii().data() );
   list.sort();
 
     //Now we go through all revs that we need to update nad make a file list
@@ -485,6 +494,7 @@ void FuseTracker::readyRead()
 
       //Read a line of data from the socket
     QString line = QString( Client->readLine()).replace(QRegExp("[\n\r]"), "");
+    //qDebug("%s", line.toAscii().data() );
 
       //Quit if this line isn't valid
     if ( line.indexOf( QRegExp("^[0-9]+,.+$")) < 0 )
@@ -608,6 +618,8 @@ void FuseTracker::updateStatus()
   //When called, a commit command is issued right now
 void FuseTracker::forceCommit()
 {
+  //qDebug("Fork Commit has been cizalled");
+
     //Push a special command onto the stack
   Data_Read.push_back( qMakePair( FuseCppInterface::SVN_COMMIT, 
                                   QString::fromUtf8("NONE")) );
@@ -659,8 +671,7 @@ void FuseTracker::readPendingUdpRequest()
 
         //Push a special command onto the stack
       addStatus( SYNC_PULL_REQUIRED );
-      Data_Read.push_back( qMakePair( FuseCppInterface::SVN_UPDATE, 
-                                      QString::fromUtf8("NONE")) );
+      Data_Read.push_back( qMakePair( FuseCppInterface::SVN_UPDATE, rx.cap(1)));
 
         //If my thread isn't started then start it
       if ( !Thread_Running )

@@ -23,7 +23,13 @@ int main( int argc, char** argv )
 
     //Quit if we got an invalid config
   if ( orm == NULL )
+  {
+    qDebug( "Got invalid config file" );
     return 1;
+  }
+
+    //Tell the user wahts up
+  qDebug( "Creating mount.c based off %s", argv[1] );
 
     //Spit out my new file
   QFile file("mount.c");
@@ -35,9 +41,11 @@ int main( int argc, char** argv )
   file.close();
 
     //Tell the user what to do now
+  qDebug("sudo gcc mount.c -o mount_bind && sudo chmod 4755 mount_bind");
   res = system("sudo gcc mount.c -o mount_bind && sudo chmod 4755 mount_bind");
 
     //Kill the file I generated
+  qDebug( "Removing mount.c" );
   QFile::remove( QString::fromUtf8("mount.c") );
 
   return 0;

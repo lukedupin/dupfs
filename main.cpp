@@ -42,7 +42,11 @@ int main(int argc, char *argv[])
   }
 
     //Mount bind my data and mount folder
-  res = system((*tracker->config())["mount_bind"].toAscii().data());
+  if ( (res = system((*tracker->config())["mount_bind"].toAscii().data())) != 0)
+  {
+    qDebug("Unable to mount data directory");
+    return -2;
+  }
 
     //Create my fuse thread
   app_argc = 4;
