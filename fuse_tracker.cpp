@@ -203,7 +203,7 @@ void FuseTracker::gotCommand( FuseCppInterface::NotableAction action,
       addStatus( SYNC_PUSH );
 
         //If there aren't any updated items, quit out now
-      if ( Updated_Items.count() > 0 )
+      if ( Updated_Items.count() <= 0 )
         return;
 
         //handle our sync mode
@@ -411,6 +411,8 @@ QStringList FuseTracker::updateFiles()
                                     .replace( RegEx_Special, "\\\\\\1");
   OrmLight revs;
   QStringList files;
+  QHash<QString, bool> dup;
+  QString value;
 
     //Figure out what files we need
   revs = SvnXmlReader::readSvnXml( 
@@ -426,7 +428,14 @@ QStringList FuseTracker::updateFiles()
     //We skip the first one since that is always the current log entry
   for ( i = 1; i < list.size(); i++ )
     for ( r = 0; r < revs[list[i]]["paths"].size(); r++ )
-      files.push_back( QString("%1%2").arg(Mounted).arg(revs[list[i]]["paths"][r]).replace( RegEx_Special, "\\\\\\1") );
+    {
+      value = QString("%1%2").arg(Mounted).arg(revs[list[i]]["paths"][r]).replace( RegEx_Special, "\\\\\\1");
+      if ( !dup.contains( value ) )
+      {
+        dup[value] = true;
+        files.push_back( value );
+      }
+    }
 
     //Always push my track file onto the list of updates
   files.push_back( my_path );
