@@ -14,6 +14,7 @@ Window::Window( FuseTracker* tracker )
     //Init my instance variables
   Visible = false;
   Spin_Idx = -1;
+  Spin_Mode = QString::fromUtf8("sync");
   Pending_Tasks = 0;
 
     //Create my tray menu
@@ -71,22 +72,26 @@ Window::Window( FuseTracker* tracker )
   connect(Timer, SIGNAL(timeout()), this, SLOT(timeout()));
 
     //Build out my icon
-  for ( i = 0; i < 8; i++ )
+  for ( i = 0; i < 6; i++ )
   {
-    Spin_List["black_clock"].push_back( QIcon(QString(":/images/black_spin_clock_%1.png").arg(i)));
-    Spin_List["red_clock"].push_back( QIcon(QString(":/images/red_spin_clock_%1.png").arg(i)));
-    Spin_List["green_clock"].push_back( QIcon(QString(":/images/green_spin_clock_%1.png").arg(i)));
-    Spin_List["blue_clock"].push_back( QIcon(QString(":/images/blue_spin_clock_%1.png").arg(i)));
+    Spin_List["blue"]["offline"].push_back( QIcon(QString(":/images/blue_offline_%1.png").arg(i)));
+    Spin_List["blue"]["sync"].push_back( QIcon(QString(":/images/blue_sync_%1.png").arg(i)));
+
+    Spin_List["green"]["offline"].push_back( QIcon(QString(":/images/green_offline_%1.png").arg(i)));
+    Spin_List["green"]["sync"].push_back( QIcon(QString(":/images/green_sync_%1.png").arg(i)));
+
+    Spin_List["red"]["offline"].push_back( QIcon(QString(":/images/red_offline_%1.png").arg(i)));
+    Spin_List["red"]["sync"].push_back( QIcon(QString(":/images/red_sync_%1.png").arg(i)));
+
+    Spin_List["white"]["offline"].push_back( QIcon(QString(":/images/white_offline_%1.png").arg(i)));
+    Spin_List["white"]["sync"].push_back( QIcon(QString(":/images/white_sync_%1.png").arg(i)));
+
+    Spin_List["yellow"]["offline"].push_back( QIcon(QString(":/images/yellow_offline_%1.png").arg(i)));
+    Spin_List["yellow"]["sync"].push_back( QIcon(QString(":/images/yellow_sync_%1.png").arg(i)));
   }
 
-    //Build my called waves
-  Icon_Hash.insert( "red_clock",    QIcon(":/images/red_clock.png") );
-  Icon_Hash.insert( "blue_clock",   QIcon(":/images/blue_clock.png") );
-  Icon_Hash.insert( "black_clock",  QIcon(":/images/black_clock.png") );
-  Icon_Hash.insert( "green_clock",  QIcon(":/images/green_clock.png") );
-
-  Tray_Icon->setIcon(Icon_Hash["red_clock"]);
-  setWindowIcon(Icon_Hash["red_clock"]);
+  Tray_Icon->setIcon( Spin_List["green"][Spin_Mode][0] );
+  setWindowIcon( Spin_List["green"][Spin_Mode][0] );
 
   Tray_Icon->setToolTip("DupFs");
 
@@ -139,15 +144,20 @@ void Window::operationChanged( int mode )
   {
     case FuseTracker::OP_SYNC_MODE:
       Sync_Mode_Action->setChecked( true );
+      Spin_Mode = QString::fromUtf8("sync");
       break;
 
     case FuseTracker::OP_OFFLINE_MODE:
       Offline_Mode_Action->setChecked( true );
+      Spin_Mode = QString::fromUtf8("offline");
       break;
 
     default:
       break;
   }
+
+    //Invalidate the status to ensure an icon update
+  Last_Status = FuseTracker::UNKNOWN;
 }
 
   //Called to handle click actions
@@ -215,8 +225,8 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["red_clock"].size() )
-      Tray_Icon->setIcon(Spin_List["red_clock"][Spin_Idx]);
+    if ( Spin_Idx < Spin_List["red"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["red"][Spin_Mode][Spin_Idx]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
       Spin_Idx = -1;
@@ -231,8 +241,8 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["red_clock"].size() )
-      Tray_Icon->setIcon(Spin_List["red_clock"][Spin_Idx]);
+    if ( Spin_Idx < Spin_List["yellow"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["yellow"][Spin_Mode][Spin_Idx]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
       Spin_Idx = -1;
@@ -247,8 +257,8 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["blue_clock"].size() )
-      Tray_Icon->setIcon(Spin_List["blue_clock"][Spin_Idx]);
+    if ( Spin_Idx < Spin_List["blue"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["blue"][Spin_Mode][Spin_Idx]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
       Spin_Idx = -1;
@@ -263,8 +273,8 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["green_clock"].size() )
-      Tray_Icon->setIcon(Spin_List["green_clock"][Spin_Idx]);
+    if ( Spin_Idx < Spin_List["green"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["green"][Spin_Mode][Spin_Idx]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
       Spin_Idx = -1;
@@ -279,7 +289,7 @@ void Window::timeout()
 
       //Reset the thing to a sleeping state
     Spin_Idx = -1;
-    Tray_Icon->setIcon(Icon_Hash["black_clock"]);
+    Tray_Icon->setIcon( Spin_List["white"][Spin_Mode][0] );
     Tray_Icon->setToolTip(QString::fromUtf8("DupFs Watching"));
   }
 

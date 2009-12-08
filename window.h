@@ -50,11 +50,10 @@ class Window : public QDialog
 
   int               Pending_Tasks;
 
-  QHash<QString, QIcon> Icon_Hash;
-
     //Spin icon
-  int                           Spin_Idx;
-  QHash<QString, QList<QIcon> > Spin_List;
+  int               Spin_Idx;
+  QHash<QString, QHash<QString, QList<QIcon> > > Spin_List;
+  QString           Spin_Mode;
 
     //Store the last state
   int Last_Status;
