@@ -225,12 +225,12 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["red"][Spin_Mode].size() )
+    if      ( Spin_Idx < Spin_List["red"][Spin_Mode].size() )
       Tray_Icon->setIcon(Spin_List["red"][Spin_Mode][Spin_Idx]);
+    else if ( Spin_Idx == Spin_List["red"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["red"][Spin_Mode][0]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
-      if ( Spin_Idx >= 0 )
-        Tray_Icon->setIcon(Spin_List["red"][Spin_Mode][0]);
       Spin_Idx = -1;
 
         //Log what time it is
@@ -243,12 +243,12 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["yellow"][Spin_Mode].size() )
+    if      ( Spin_Idx < Spin_List["yellow"][Spin_Mode].size() )
       Tray_Icon->setIcon(Spin_List["yellow"][Spin_Mode][Spin_Idx]);
+    else if ( Spin_Idx == Spin_List["yellow"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["yellow"][Spin_Mode][0]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
-      if ( Spin_Idx >= 0 )
-        Tray_Icon->setIcon(Spin_List["yellow"][Spin_Mode][0]);
       Spin_Idx = -1;
 
         //Log what time it is
@@ -261,12 +261,12 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["blue"][Spin_Mode].size() )
+    if      ( Spin_Idx < Spin_List["blue"][Spin_Mode].size() )
       Tray_Icon->setIcon(Spin_List["blue"][Spin_Mode][Spin_Idx]);
+    else if ( Spin_Idx == Spin_List["blue"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["blue"][Spin_Mode][0]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
-      if ( Spin_Idx >= 0 )
-        Tray_Icon->setIcon(Spin_List["blue"][Spin_Mode][0]);
       Spin_Idx = -1;
 
         //Log what time it is
@@ -279,12 +279,12 @@ void Window::timeout()
   {
       //Spin the image around
     Spin_Idx++;
-    if ( Spin_Idx < Spin_List["green"][Spin_Mode].size() )
+    if      ( Spin_Idx < Spin_List["green"][Spin_Mode].size() )
       Tray_Icon->setIcon(Spin_List["green"][Spin_Mode][Spin_Idx]);
+    else if ( Spin_Idx == Spin_List["green"][Spin_Mode].size() )
+      Tray_Icon->setIcon(Spin_List["green"][Spin_Mode][0]);
     else if ( Spin_Idx >= SPIN_LIST_MAX )
     {
-      if ( Spin_Idx >= 0 )
-        Tray_Icon->setIcon(Spin_List["green"][Spin_Mode][0]);
       Spin_Idx = -1;
 
         //Log what time it is
